@@ -5,7 +5,7 @@ __email__ = 'zhentian.kai@outlook.com'
 '''
     Two core functions:
     1. correct HGVS name using https://www.mutalyzer.nl
-    2. translate HGVS name to Chinese...
+    2. translate HGVS name into Chinese...
 '''
 
 
@@ -102,18 +102,19 @@ def translate(hgvs_name):
         translated_name = '请报告审核者根据hgvs命名提供'
 
     ### protein part
-    # substitution
-    m1 = re.match(r'p\.([a-zA-Z]{3})(\d+)(([a-zA-Z]{3}))', pchange)
-    # deletion
-    m2 = re.match(r'p\.([a-zA-Z]{3})(\d+)_([a-zA-Z]{3})(\d+)del', pchange)
-    # delins
-    m3 = re.match(r'p\.([a-zA-Z]{3})(\d+)_([a-zA-Z]{3})(\d+)delins([a-zA-Z]{3})', pchange)
+    # substitution - p.Val368Trp
+    m1 = re.match(r'p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})', pchange)
+    # deletion - p.Val368_Trp378del
+    m2 = re.match(r'p\.([A-Z][a-z]{2})(\d+)_([A-Z][a-z]{2})(\d+)del', pchange)
+    # delins - p.Val368delinsGlyLys
+    m3 = re.match(r'p\.([A-Z][a-z]{2})(\d+)_([A-Z][a-z]{2})(\d+)delins(([A-Z][a-z]{2})+)', pchange)
+    m7 = re.match(r'p\.([A-Z][a-z]{2})(\d+)delins(([A-Z][a-z]{2})+)', pchange)
     # duplication
-    m4 = re.match(r'p\.([a-zA-Z]{3})(\d+)_([a-zA-Z]{3})(\d+)dup', pchange)
+    m4 = re.match(r'p\.([A-Z][a-z]{2})(\d+)_([A-Z][a-z]{2})(\d+)dup', pchange)
     # contain stop codon
     m5 = re.search(r'p\.(\S+)\*(\d+)', pchange)
     # insertion
-    m6 = re.match(r'p\.([a-zA-Z]{3})(\d+)_([a-zA-Z]{3})(\d+)ins([a-zA-Z]{3})', pchange)
+    m6 = re.match(r'p\.([A-Z][a-z]{2})(\d+)_([A-Z][a-z]{2})(\d+)ins(([A-Z][a-z]{2})+)', pchange)
     flag2 = False
     if m1:
         pchinese = '第{}位氨基酸由{}转变成了{}'.format(m1.group(2), _amino_cn[_amino_d[m1.group(1)]], _amino_cn[_amino_d[m1.group(3)]])
@@ -122,7 +123,20 @@ def translate(hgvs_name):
         pchinese = '第{}位氨基酸缺失'.format(m2.group(2)+'_'+m2.group(4))
         flag2 = True
     if m3:
-        pchinese = '第{}位氨基酸缺失插入{}'.format(m3.group(2)+'_'+m3.group(4), _amino_cn[_amino_d[m3.group(5)]])
+        inserted_aachinse = ''
+        inserted_aa = str(m3.group(5)) # e.g. AlaGly
+        for i in range(0, len(inserted_aa), 3):
+            each_aa = inserted_aa[i:i+3]
+            inserted_aachinse += _amino_cn[_amino_d[each_aa]]
+        pchinese = '第{}位氨基酸缺失插入{}'.format(m3.group(2)+'_'+m3.group(4), inserted_aachinse)
+        flag2 = True
+    if m7:
+        inserted_aachinse = ''
+        inserted_aa = str(m7.group(3)) # e.g. AlaGly
+        for i in range(0, len(inserted_aa), 3):
+            each_aa = inserted_aa[i:i+3]
+            inserted_aachinse += _amino_cn[_amino_d[each_aa]]
+        pchinese = '第{}位氨基酸缺失插入{}'.format(m7.group(2), inserted_aachinse)
         flag2 = True
     if m4:
         pchinese = '第{}位氨基酸重复'.format(m4.group(2)+'_'+m4.group(4))
@@ -130,7 +144,12 @@ def translate(hgvs_name):
     if flag2 and m5:
         pchinese += '并于第{}个氨基酸提前终止'.format(m5.group(2))
     if m6:
-        pchinese = '第{}位氨基酸插入{}'.format(m6.group(2)+'_'+m6.group(4), _amino_cn[_amino_d[m6.group(5)]])
+        inserted_aachinse = ''
+        inserted_aa = str(m6.group(5)) # e.g. AlaGly
+        for i in range(0, len(inserted_aa), 3):
+            each_aa = inserted_aa[i:i+3]
+            inserted_aachinse += _amino_cn[_amino_d[each_aa]]
+        pchinese = '第{}位氨基酸插入{}'.format(m6.group(2)+'_'+m6.group(4), inserted_aachinse)
     if not flag2:
         translated_name = '请报告审核者根据hgvs命名提供'
                                                                                  
