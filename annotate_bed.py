@@ -74,7 +74,7 @@ def rewrite_bed(outname, bedinfo, annotation):
             # check if on the same chromosome
             if interval[0] == anno[0]:
                 # check if overlapped
-                if anno[1] <= interval[1] <= anno[2] or anno[1] <= interval[2] <= anno[2]:
+                if anno[1] <= interval[1] <= anno[2] or anno[1] <= interval[2] <= anno[2] or interval[1] <= anno[1] <= anno[2] <= interval[2]:
                     annotated_genes.add(annotation[anno])
                     flag = True
         if flag:
