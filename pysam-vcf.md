@@ -113,10 +113,10 @@ for record in vcf:
     # get positions (That's the position of reference genome !)
     print(record.pos, record.start, record.stop)
     
-  	# get info for one sample
-		SampleInfo = record.samples['MySampleID']
-    
-  	# for each sample, get their info
+    # get info for one sample
+    SampleInfo = record.samples['MySampleID']
+
+    # for each sample, get their info
     print(dict(SampleInfo))
     # output looks like this:
 		#{'GT': (0, 1), 'AD': (71, 54), 'AF': (0.4309999942779541,), 'DP': 125, 'F1R2': (0, 0), 'F2R1': (71, 54), 'MBQ': (30, 35), 'MFRL': (227, 227), 'MMQ': (60,), 'MPOS': (16,), 'ORIGINAL_CONTIG_MISMATCH': 0, 'SA_MAP_AF': (0.4339999854564667, 0.3840000033378601, 0.4320000112056732), 'SA_POST_PROB': (0.02500000037252903, 0.02800000086426735, 0.9470000267028809)}
