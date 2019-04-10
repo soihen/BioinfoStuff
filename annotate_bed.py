@@ -2,7 +2,7 @@ __author__ = 'Kai'
 __date__ = '21/03/2019'
 __email__ = 'zhentian.kai@outlook.com'
 
-'''
+__doc__ = '''
     Annotate bed file based on refFlat.txt file from UCSC
     
     Usage:
@@ -80,8 +80,8 @@ def rewrite_bed(outname, bedinfo, annotation):
         if flag:
             fw.write('{}\t{}\t{}\t{}\n'.format(interval[0], interval[1], interval[2], ','.join(annotated_genes)))
         else:
-            # no annotation can be found, write interval with three fields only
-            fw.write('{}\t{}\t{}\n'.format(interval[0], interval[1], interval[2]))
+            # write a dot if no annotation can be found
+            fw.write('{}\t{}\t{}\t.\n'.format(interval[0], interval[1], interval[2]))
     fw.close()
 
 
