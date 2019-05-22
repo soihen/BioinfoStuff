@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
-__doc__ = """使用pyinstaller -wF hgvs_translate.py打包，便可直接在windows下运行"""
+__doc__ = """
+双击便可直接打开运行，
+也可以使用pyinstaller -wF hgvs_translate.py打包，就能直接在windows下运行"""
+
 __author__ = "Kai"
 __date__ = "2019/05/22"
 
@@ -30,12 +33,10 @@ def translate(hgvs_name):
                 'Met': 'M', 'Ala': 'A', 'His': 'H', 'Ter': 'X', 'Asn': 'N',
                 'Thr': 'T', 'Arg': 'R'}
 
-    logger.debug("开始翻译...")
     if hgvs_name.count(":") != 4:
-        logger.error("HGVS命名本身有点问题，看看是否只有4个分号存在，例：BRCA2:NM_000059:exon11:c.2236G>A:p.Val746Met")
+        return "这个HGVS命名本身有问题，看看是否只有4个分号存在，例：BRCA2:NM_000059:exon11:c.2236G>A:p.Val746Met"
     else:
         gene, transcript, exon, aachange, pchange = hgvs_name.split(":")
-        logger.debug("gene: %s, transcript: %s, exon: %s, nucleic acid: %s, amino acid: %s", gene, transcript, exon, aachange, pchange)
         ### cDNA part
         # DNA substitution
         m1 = re.match(r'c\.(\d+)([A-Z])>([A-Z])', aachange)
@@ -72,8 +73,7 @@ def translate(hgvs_name):
             aachinese = '第{}位碱基缺失插入{}使得'.format(m7.group(1) + '_' + m7.group(2), m7.group(3))
             flag1 = True
         if not flag1:
-            translated_name = 'hgvs命名碱基部分出错'
-        logger.debug(aachinese)
+            return 'hgvs命名碱基部分出错'
 
         ### protein part
         # substitution - p.Val368Trp
@@ -139,27 +139,21 @@ def translate(hgvs_name):
             pchinese = '第{}位氨基酸插入{}'.format(m6.group(2) + '_' + m6.group(4), inserted_aachinse)
             flag2 = True
         if not flag2:
-            translated_name = 'hgvs命名氨基酸部分出错'
+            return 'hgvs命名氨基酸部分出错'
         # only both flags are true.
         if flag1 and flag2:
             translated_name = gene + '基因' + exon + aachinese + pchinese
-        if flag2 and m8:
+        if m8:
             translated_name += '且发生移码'
-        logger.debug(translated_name)
         return translated_name
 
 
 
 if __name__ == '__main__':
-    # handling logger
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - line %(lineno)d - %(message)s')
-    logger = logging.getLogger(__name__)
-
     # make gui...
-
     layout = [[sg.Text("在下方输入HGVS英文命名")],
               [sg.Text("HGVS英文"), sg.InputText('')],
-              [sg.Text("HGVS中文"), sg.Output(size=(45, 2), key='_OUTPUT_')],
+              [sg.Text("HGVS中文"), sg.Output(size=(45, 3), key='_OUTPUT_')],
               [sg.Button("翻译")]]
 
     window = sg.Window("HGVS翻译～", layout)
@@ -167,7 +161,6 @@ if __name__ == '__main__':
         event, values = window.Read()
         if event == '翻译':
             window.Element('_OUTPUT_').Update(translate(values[0]))
-
         elif event is None:
             break
     window.Close()
