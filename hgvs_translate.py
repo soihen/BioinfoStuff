@@ -96,6 +96,7 @@ def translate(hgvs_name):
         flag2 = False
         # frameshift
         m8 = ('fs' in pchange)
+        m9 = re.match(r'p\.([A-Z][a-z]{2})(\d+)dup', pchange)
         if m1:
             pchinese = '第{}位氨基酸由{}转变成了{}'.format(m1.group(2), _amino_cn[_amino_d[m1.group(1)]],
                                                  _amino_cn[_amino_d[m1.group(3)]])
@@ -137,6 +138,9 @@ def translate(hgvs_name):
                 each_aa = inserted_aa[i:i + 3]
                 inserted_aachinse += _amino_cn[_amino_d[each_aa]]
             pchinese = '第{}位氨基酸插入{}'.format(m6.group(2) + '_' + m6.group(4), inserted_aachinse)
+            flag2 = True
+        if m9:
+            pchinese = '第{}位{}重复'.format(m9.group(2), _amino_cn[_amino_d[m9.group(1)]])
             flag2 = True
         if not flag2:
             return 'hgvs命名氨基酸部分出错'
