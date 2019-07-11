@@ -5,7 +5,7 @@ Required file:
     BED file for a targeted panel
 """
 __author__ = "Kai"
-__date__ = "29/05/2019"
+__date__ = "11/07/2019"
 
 from collections import defaultdict
 import pandas as pd
@@ -23,9 +23,9 @@ def read_bed(bed):
     with open(bed, 'r') as f:
         for line in f:
             line = line.strip().split()
-            bedinfo[line[0]].append((int(line[1]), int(line[2])))
+            chrom = line[0].lower().replace("chr", "")
+            bedinfo[chrom].append((int(line[1]), int(line[2])))
     return bedinfo
-
 
 
 def subsample_maf(maf, bedinfo, outfile):
@@ -39,8 +39,9 @@ def subsample_maf(maf, bedinfo, outfile):
     drops = []
     df = pd.read_csv(maf, sep="\t", comment="#", low_memory=False)
     for index, row in df.iterrows():
+        chrom = str(row['Chromosome']).lower().replace("chr", "")
         # catch mutants that locate inside bed intervals
-        for start, end in bedinfo[row['Chromosome']]:
+        for start, end in bedinfo[chrom]:
             if row['Start_Position'] >= start and row['End_Position'] <= end:
                 break
         else:
