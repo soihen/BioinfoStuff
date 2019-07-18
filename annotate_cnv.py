@@ -27,16 +27,17 @@ def convert_vcf(vcf_file, ofname, refflat):
     header = ("sampleID", "gene", "transcript", "chromosome", "regions", "type", "copy_number")
 
     cnv_data = []
-    for cnv_gene in annotated_cnv:
-        transcript, chrom, regions, cn = annotated_cnv[cnv_gene][0], "chr" + annotated_cnv[cnv_gene][2], \
-                                         annotated_cnv[cnv_gene][3], annotated_cnv[cnv_gene][4]
-        if cn > 2:
-            type = "amplification"
-        elif cn == 2:
-            type = "neutral"
-        else:
-            type = "deletion"
-        cnv_data.append((sampleID, cnv_gene, transcript, chrom, regions, type, cn))
+    for seg_key in annotated_cnv:
+        for cnv_gene in annotated_cnv[seg_key]:
+            transcript, chrom, regions, cn = annotated_cnv[seg_key][cnv_gene][0], "chr" + annotated_cnv[seg_key][cnv_gene][2], \
+                                             annotated_cnv[seg_key][cnv_gene][3], annotated_cnv[seg_key][cnv_gene][4]
+            if cn > 2:
+                type = "amplification"
+            elif cn == 2:
+                type = "neutral"
+            else:
+                type = "deletion"
+            cnv_data.append((sampleID, cnv_gene, transcript, chrom, regions, type, cn))
 
     df = pd.DataFrame(np.array(cnv_data), columns=header)
     df.to_excel(ofname, index=None)
@@ -48,12 +49,19 @@ def compare_refflat(refflat, vcf_info):
     1) harboured gene;
     2) corresponding transcript to that gene (longest)
     3) exons that was influenced by that CNV (possible breakpoint)
+    ***
+    Noted that an individual gene may harbour more than one CNVs
+    i.e. breakpoint occurs inside the gene
+    Therefore each CNV segment must be consider separately
     :param refflat:
     :param vcf_info: obtained from parse_cnv_vcf()
     :return:
     """
-    # annotated_cnv contains following infos: {gene: (transcript, exon_count, chromosome, regions, cn), ...}
+    # annotation information for each CNV segment are stored separately in annotated_cnv
+    # annotated_cnv[seg_key] looks like this:
+    #   -- {gene: (transcript, exon_count, chromosome, regions, cn),...}
     annotated_cnv = {}
+
     with open(refflat, "r") as fh:
         for line in fh:
             line = line.strip().split("\t")
@@ -66,6 +74,8 @@ def compare_refflat(refflat, vcf_info):
             # skip genes that completely not overlapped with CNV segment
             transcript_start, transcript_end = int(line[4]), int(line[5])
             for seg in vcf_info[chrom]:
+                seg_key = "{}-{}".format(seg[0], seg[1])
+
                 if seg[1] <= transcript_start or seg[0] >= transcript_end:
                     continue
 
@@ -73,16 +83,19 @@ def compare_refflat(refflat, vcf_info):
                 exon_count, exon_starts, exon_ends = int(line[-3]), line[-2], line[-1]
 
                 # only use the longest transcript for annotation
-                if gene_name in annotated_cnv:
-                    if annotated_cnv[gene_name][1] >= exon_count:
-                        continue
+                if seg_key in annotated_cnv:
+                    if gene_name in annotated_cnv[seg_key]:
+                        if annotated_cnv[seg_key][gene_name][1] >= exon_count:
+                            continue
 
                 exon_starts = list(map(int, exon_starts.split(",")[:-1]))
                 exon_ends = list(map(int, exon_ends.split(",")[:-1]))
                 boundaries = np.array(list(zip(exon_starts, exon_ends)))
                 boundaries = list(boundaries.flatten())
                 overlaps = find_overlap(seg, boundaries, strand, exon_count)
-                annotated_cnv[gene_name] = (transcript_name, exon_count, chrom, overlaps, seg[2])
+                if seg_key not in annotated_cnv:
+                    annotated_cnv[seg_key] = {}
+                annotated_cnv[seg_key][gene_name] = (transcript_name, exon_count, chrom, overlaps, seg[2])
     return annotated_cnv
 
 
@@ -96,12 +109,13 @@ def find_overlap(seg, boundaries, strand, exon_count):
     :return:
     """
     for index, pos in enumerate(boundaries):
+        if index == 0:
+            if pos >= seg[0]:
+                start = 0
+
         if pos <= seg[0]:
             start = index
-    else:
-        start = 0
 
-    for index, pos in enumerate(boundaries):
         if pos < seg[1]:
             end = index
 
@@ -131,7 +145,7 @@ def parse_cnv_vcf(vcf_file):
             if 'CN' in record.samples[sampleID]:
                 # chromosome name sometimes startswith Chr, sometimes startswith chr
                 vcf_info[record.chrom.lower().replace("chr", "")].append((record.start, record.stop, record.samples[sampleID]['CN']))
-        return vcf_info, sampleID
+    return vcf_info, sampleID
 
 
 if __name__ == '__main__':
