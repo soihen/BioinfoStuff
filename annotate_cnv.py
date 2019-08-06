@@ -142,9 +142,17 @@ def parse_cnv_vcf(vcf_file):
     with pysam.VariantFile(vcf_file, 'r') as vcf:
         sampleID = vcf.header.samples[0]
         for record in vcf:
-            if 'CN' in record.samples[sampleID]:
+            # deletion --> no 'CN' in format field
+            if record.info['SVTYPE'] == 'DEL':
                 # chromosome name sometimes startswith Chr, sometimes startswith chr
+                if record.info['FOLD_CHANGE'] == 0.25:
+                    vcf_info[record.chrom.lower().replace("chr", "")].append((record.start, record.stop, 0))
+                elif record.info['FOLD_CHANGE'] == 0.5:
+                    vcf_info[record.chrom.lower().replace("chr", "")].append((record.start, record.stop, 1))
+            elif record.info['SVTYPE'] == 'DUP':
                 vcf_info[record.chrom.lower().replace("chr", "")].append((record.start, record.stop, record.samples[sampleID]['CN']))
+            else:
+                raise Exception("input vcf file should only contains DUP and/or DEL in the field 'SVTYPE'")
     return vcf_info, sampleID
 
 
