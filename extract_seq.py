@@ -42,7 +42,7 @@ def extract_seq(genomic_coordinate, reference_genome="hg19.fasta"):
             fh.seek(fadix_dict[genomic_coordinate[0]][1])
             for index, line in enumerate(fh):    
                     if index == start_line_index:
-                        seq = line[start_index: end_index+1]
+                        seq = line[start_index-1: end_index]
                         return seq
 
     elif end_line_index > start_line_index:
@@ -52,11 +52,11 @@ def extract_seq(genomic_coordinate, reference_genome="hg19.fasta"):
             fh.seek(fadix_dict[genomic_coordinate[0]][1])
             for index, line in enumerate(fh):
                     if index == start_line_index:
-                        seq += line[start_index: fadix_dict[genomic_coordinate[0]][2]]
+                        seq += line[start_index-1: fadix_dict[genomic_coordinate[0]][2]]
                     elif start_line_index < index < end_line_index:
                         seq += line[:fadix_dict[genomic_coordinate[0]][2]]
                     elif index == end_line_index:
-                        seq += line[:end_index+1]
+                        seq += line[:end_index]
                         break
         return seq
     
