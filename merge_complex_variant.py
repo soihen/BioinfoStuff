@@ -4,15 +4,21 @@ merge variants belonging to a same phasing group
 GATK can give a PID (physical phasing ID) to each unique variant.
 Variants with the same PID can be merged into one complex variant
 
+***
+multiallelic sites in the input VCF file should be splitted in advance:
+`bcftools norm -m both [input] -o [output]`
+The VCF file should also be sorted in advance
+
 Usage:
 [kai@admin]$ python3 merge_complex_variant.py [input_vcf] [reference]
 
 ***
 Currently only support for vcf file with one sample only
+
 """
 __author__ = "Kai"
-__version__ = "v0.0"
-__date__ = "21/11/2019"
+__version__ = "v0.2"
+__date__ = "22/11/2019"
 
 
 import pysam
@@ -37,21 +43,71 @@ def main(vcf_file, ofname, reference):
             counter[record.samples[sampleID]['PID']] += 1
             if counter[record.samples[sampleID]['PID']] == len(pids[record.samples[sampleID]['PID']]):
                 merged_record = merge_variants(pids[record.samples[sampleID]['PID']], reference)
-                vcfout.write(merged_record)
-            
+                if merged_record:
+                    print("* {}:{}-{} {}->{}".format(merged_record.chrom, merged_record.start, merged_record.stop,
+                                                     merged_record.ref, merged_record.alts[0]))
+                    vcfout.write(merged_record)
+    print("--------------")
+    print("* The output file was written to {}".format(ofname))
+
 
 def merge_variants(variants_list, reference):
     """
-    merge all variants in the list into a complex variant
+    merge all variants in the list into a complex variant    
     """
     merged_record = variants_list[0]
     for variant_record in variants_list[1:]:
-        ref_seq = reference[variant_record.chrom][merged_record.start: variant_record.stop].seq
-        gap_ref = reference[variant_record.chrom][merged_record.stop: variant_record.start].seq
-        alt_seq = merged_record.alts[0] + gap_ref + variant_record.alts[0]
-        merged_record.stop = variant_record.stop
-        merged_record.ref = ref_seq
-        merged_record.alts = tuple([alt_seq])
+        # two variants lists in order, and not overlap with each other
+        if merged_record.stop < variant_record.start:
+            ref_seq = reference[variant_record.chrom][merged_record.start: variant_record.stop].seq.upper()
+            gap_ref = reference[variant_record.chrom][merged_record.stop: variant_record.start].seq.upper()
+            alt_seq = merged_record.alts[0] + gap_ref + variant_record.alts[0]
+            merged_record.stop = variant_record.stop
+            merged_record.ref = ref_seq
+            merged_record.alts = tuple([alt_seq])
+            
+        # two variants next to each other
+        elif merged_record.stop == variant_record.start:
+            ref_seq = reference[variant_record.chrom][merged_record.start: variant_record.stop].seq.upper()
+            alt_seq = merged_record.alts[0] + variant_record.alts[0]
+            merged_record.stop = variant_record.stop 
+            merged_record.ref = ref_seq
+            merged_record.alts = tuple([alt_seq])
+
+        # two variants overlapped
+        elif merged_record.start < variant_record.start < merged_record.stop < variant_record.stop:
+            # if two alt seqs are same, then merge, otherwise, discard them both
+            var1_alt = merged_record.alts[0][variant_record.start-merged_record.start: variant_record.stop-merged_record.start]
+            var2_alt = variant_record.alts[0]
+            if var1_alt != var2_alt:
+                print("** Warning: those two variants mutated to different alleles, abondon them both")
+                print("* {}:{}-{} {}->{}".format(merged_record.chrom, merged_record.start, merged_record.stop,
+                                                 merged_record.ref, merged_record.alts[0]))
+                print("* {}:{}-{} {}->{}".format(variant_record.chrom, variant_record.start, variant_record.stop,
+                                                 variant_record.ref, variant_record.alts[0]))
+                return None
+            merged_record.stop = variant_record.stop
+            ref_seq = reference[variant_record.chrom][merged_record.start: variant_record.stop].seq.upper()
+            merged_record.ref = ref_seq
+            alt_seq = merged_record.alts[0] + variant_record.alts[0][merged_record.stop-variant_record.start:]
+
+        # the first variant encomprise the second variant
+        elif merged_record.start < variant_record.start < variant_record.stop <= merged_record.stop:
+            ref_seq = reference[variant_record.chrom][merged_record.start: variant_record.stop].seq.upper()
+            # if two alt seqs are same, then merge, otherwise, discard them both
+            var1_alt = merged_record.alts[0][variant_record.start-merged_record.start: variant_record.stop-merged_record.start]
+            var2_alt = variant_record.alts[0]
+            if var1_alt != var2_alt:
+                print("** Warning: those two variants mutated to different alleles, abondon them both")
+                print("*** {}:{}-{} {}->{}".format(merged_record.chrom, merged_record.start, merged_record.stop,
+                                                   merged_record.ref, merged_record.alts[0]))
+                print("*** {}:{}-{} {}->{}".format(variant_record.chrom, variant_record.start, variant_record.stop,
+                                                   variant_record.ref, variant_record.alts[0]))
+                return None
+        
+        else:
+            raise Exception("Unexpected variant position, sort your vcf before use this scirpt")
+   
     return merged_record
 
 
@@ -65,8 +121,8 @@ def identify_phasing_groups(vcf_file):
         for record in vcf:
             if 'PID' in record.samples[sampleID]:
                 pids[record.samples[sampleID]['PID']].append(record)
+    print("* {} phasing group(s) have been identified".format(len(pids)))  
     return pids
-
 
 
 if __name__ == "__main__":
