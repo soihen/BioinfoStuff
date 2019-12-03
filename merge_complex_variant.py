@@ -78,7 +78,7 @@ def merge_variants(variants_list, reference):
         elif merged_record.start < variant_record.start < merged_record.stop < variant_record.stop:
             # if two alt seqs are same, then merge, otherwise, discard them both
             var1_alt = merged_record.alts[0][variant_record.start-merged_record.start: variant_record.stop-merged_record.start]
-            var2_alt = variant_record.alts[0]
+            var2_alt = variant_record.alts[0][:merged_record.stop-variant_record.start]
             if var1_alt != var2_alt:
                 print("** Warning: those two variants mutated to different alleles, abondon them both")
                 print("* {}:{}-{} {}->{}".format(merged_record.chrom, merged_record.start, merged_record.stop,
