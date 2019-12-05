@@ -5,20 +5,23 @@ GATK can give a PID (physical phasing ID) to each unique variant.
 Variants with the same PID can be merged into one complex variant
 
 ***
-multiallelic sites in the input VCF file should be splitted in advance:
-`bcftools norm -m both [input] -o [output]`
-The VCF file should also be sorted in advance
+The input VCF file should be sorted and splitted (on multiallelic sites) in advance
+
+---
+update:
+add max_distance parameter to limit the maximal distance for joining two 
+variants together.
 
 Usage:
-[kai@admin]$ python3 merge_complex_variant.py [input_vcf] [reference]
+[kai@admin]$ python3 merge_complex_variant.py [input_vcf] [reference] --max_distance [int]
 
 ***
 Currently only support for vcf file with one sample only
 
 """
 __author__ = "Kai"
-__version__ = "v0.2"
-__date__ = "22/11/2019"
+__version__ = "v1.0"
+__date__ = "05/12/2019"
 
 
 import pysam
@@ -29,8 +32,8 @@ from collections import Counter
 import argparse
 
 
-def main(vcf_file, ofname, reference):
-    pids = identify_phasing_groups(vcf_file)
+def main(vcf_file, ofname, reference, max_distance):
+    pids = identify_phasing_groups(vcf_file, max_distance)
     reference = Fasta(reference)
     counter = Counter()
     with pysam.VariantFile(vcf_file, "r") as vcfin, pysam.VariantFile(ofname, "w", header=vcfin.header) as vcfout:
@@ -111,7 +114,7 @@ def merge_variants(variants_list, reference):
     return merged_record
 
 
-def identify_phasing_groups(vcf_file):
+def identify_phasing_groups(vcf_file, max_distance):
     """
     identify variants on the same phasing groups
     """
@@ -120,9 +123,20 @@ def identify_phasing_groups(vcf_file):
         sampleID = vcf.header.samples[0]
         for record in vcf:
             if 'PID' in record.samples[sampleID]:
-                pids[record.samples[sampleID]['PID']].append(record)
-    print("* {} phasing group(s) have been identified".format(len(pids)))  
-    return pids
+                if record.samples[sampleID]['PID'] not in pids:
+                    pids[record.samples[sampleID]['PID']].append(record)
+                else:
+                    last_variant = pids[record.samples[sampleID]['PID']][-1]
+                    if last_variant.stop + max_distance >= record.start:
+                        pids[record.samples[sampleID]['PID']].append(record)
+    
+    # remove phase_group that contain only one variant
+    kept_pids = defaultdict(list)
+    for phase_group in pids:
+        if len(pids[phase_group]) > 1:
+            kept_pids[phase_group] = pids[phase_group]
+    print("* {} phasing group(s) have been identified".format(len(kept_pids)))  
+    return kept_pids
 
 
 if __name__ == "__main__":
@@ -130,11 +144,13 @@ if __name__ == "__main__":
     parser.add_argument("vcf", help="the input vcf file")
     parser.add_argument("reference", help="the reference fasta file")
     parser.add_argument("-o", "--output", help="the output filename")
+    parser.add_argument("--max_distance", default=5, type=int,
+                        help="The maximal distance that allows two nearby variant joining tgt.")
     args = parser.parse_args()
 
     if args.output:
-        main(args.vcf, args.output, args.reference)
+        main(args.vcf, args.output, args.reference, args.max_distance)
     else:
         infame = os.path.abspath(args.vcf)
         ofname = os.path.join(os.path.dirname(infame), os.path.basename(infame).split(".")[0]+".phasing_merged.vcf")
-        main(infame, ofname, args.reference)
+        main(infame, ofname, args.reference, args.max_distance)
