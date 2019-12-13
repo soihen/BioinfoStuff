@@ -12,7 +12,7 @@ Variant calling software like Mutect2 generates VCF file that slightly differ fr
 
 1. variants info for a same genomic position are placed in one record, shown as in below figure
 
-   ![image-20191213095536400](https://github.com/ZKai0801/BioinfoStuff/tree/figures/figures/multiallelic-sites.png?raw=true)
+   ![image1](https://raw.githubusercontent.com/ZKai0801/BioinfoStuff/figures/figures/multiallelic-sites.png)
 
    In the above figure, allele TC is believed to mutate into both CT and CC allele. Sites like this, is so called multiallelic sites, which should be splitted into two VCF records. 
 
@@ -273,7 +273,7 @@ See HGVS annotation section for solution
 
 MNVs (multi-nucleotide variants) defined as two or more nearby variants existing on the same haplotype in an individual, are a clinically and biologically important class of genetic variation. (Wang et al., 2019)
 
-![image2](https://github.com/ZKai0801/BioinfoStuff/tree/figures/figures/mnv.png?raw=true)
+![image2](https://raw.githubusercontent.com/ZKai0801/BioinfoStuff/figures/figures/mnv.png)
 
  For instance, the two variants depicted in [Fig. 1b](https://www.biorxiv.org/content/10.1101/573378v2.full#F1) are each predicted individually to have missense consequences, but in combination result in a nonsense variant. (Wang et al., 2019)
 
