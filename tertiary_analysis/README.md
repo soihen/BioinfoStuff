@@ -1,23 +1,49 @@
 # Tertiary Analysis
 
+As next-generation sequencing becoming more and more common in both clinics and medical research, interpretation of those sequencing data into biological and clinical useful information becomes the key to unraveling genome mystery. Generally, NGS data analysis usually consists of three major steps: 1) primary analysis, which converted raw sequencing signal into digital data (fastq file); 2) secondary analysis, where the most computationally intensive works occurs, perform alignment and variant calling, thus converted fastq file into varaint calling format file (VCF); and 3) tertiary analysis, interpretation of the VCF file, which involves biological classification of identified variants, determination of clinical relevance and provide actionable clinical advices such as drugs or therapies. 
+
+This article will briefly address some key steps involved in tertiary analysis in cancer, and provide some plausible solution to some of issues.
 
 
-## Normalisation
+
+## Step1: Normalisation of VCF
+
+Variant calling software like Mutect2 generates VCF file that slightly differ from those used in majority of database. To be specific, in two ways:
+
+1. variants info for a same genomic position are placed in one record, shown as in below figure
+
+   ![image-20191213095536400](https://github.com/ZKai0801/BioinfoStuff/tree/figures/figures/multiallelic-sites.png?raw=true)
+
+   In the above figure, allele TC is believed to mutate into both CT and CC allele. Sites like this, is so called multiallelic sites, which should be splitted into two VCF records. 
+
+2. InDels are called based on position of alignment, which may not be unique. 
+
+   (See indel normalisation section)
 
 ```bash
-# 拆分 multiallelic sites
+# split multiallelic sites
 bcftools norm -m -both ${sampleID}.twicefiltered.vcf --threads ${threads} -o ${sampleID}.somatic.raw.split.vcf
 
-# 左移
+# shift indel to the leftmost position
 bcftools norm -f ${hg19fa} ${sampleID}.somatic.raw.split.vcf --threads ${threads} -o ${sampleID}.somatic.split.norm.vcf
 
 ```
 
 
 
-## Filter-based annotation
+## Step2: Filter-based annotation
+
+Three major annotation softwares are: Annovar, ensembl-VEP and snpEFF
+
+This blog here compare there three annotation tools in detail:
+
+https://blog.goldenhelix.com/the-sate-of-variant-annotation-a-comparison-of-annovar-snpeff-and-vep/
 
 
+
+Here, I used both Annovar and VEP to annotate my vcf files and merge information from them together
+
+Annovar:
 
 ```bash
 perl table_annovar.pl ${sampleID}.somatic.split.norm.vcf ${humandb} \
@@ -29,9 +55,25 @@ perl table_annovar.pl ${sampleID}.somatic.split.norm.vcf ${humandb} \
 
 
 
+VEP:
+
+```
+vep  --dir /data/ngs/ltj_data/vep_grch37_bak --cache --offline --cache_version 98  --refseq --assembly GRCh37  --fa  /data/ngs/database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta --force_overwrite --vcf --variant_class --gene_phenotype --vcf_info_field ANN --hgvs --hgvsg --transcript_version -i kaohe.somatic.split.norm.vcf -o kaohe.somatic.split.norm.vep_refseq_1.vcf
+```
 
 
-## Filter
+
+
+
+## Step3: Filter
+
+Filter out benign variants 
+
+So the key step here is to determine if the variant is benign. 
+
+
+
+
 
 ```bash
 python3 snv_filter.py ${sampleID}.anno.somatic.hg19_multianno.vcf 
@@ -62,7 +104,7 @@ http://www.htslib.org/doc/faidx.html
 
 
 
-Below is a script I wrote to retrieve reference sequence (before I knew those two packages.. )
+Below is a script I wrote to retrieve reference sequence (before I found those two packages... )
 
 ```python
 __doc__ = """
@@ -153,7 +195,7 @@ if __name__ == "__main__":
 
 
 
-## Indel Normalisation
+## Notes: Indel Normalisation
 
 The position of InDel is not unique in the reference. For example:
 
@@ -227,19 +269,15 @@ See HGVS annotation section for solution
 
 
 
-## merge MNV 
-
-
+## Step4: merge MNV 
 
 MNVs (multi-nucleotide variants) defined as two or more nearby variants existing on the same haplotype in an individual, are a clinically and biologically important class of genetic variation. (Wang et al., 2019)
 
-
-
-![image-20191211133824859](C:\Users\Topgen191017\AppData\Roaming\Typora\typora-user-images\image-20191211133824859.png)
+![image2](https://github.com/ZKai0801/BioinfoStuff/tree/figures/figures/mnv.png?raw=true)
 
  For instance, the two variants depicted in [Fig. 1b](https://www.biorxiv.org/content/10.1101/573378v2.full#F1) are each predicted individually to have missense consequences, but in combination result in a nonsense variant. (Wang et al., 2019)
 
-
+ 
 
 ***in cis***  -- variants occur on same haplotype
 
@@ -269,7 +307,7 @@ See script [merge_mnv.py](https://github.com/ZKai0801/BioinfoStuff/blob/master/t
 
 
 
-## HGVS annotation
+## Step5: HGVS annotation
 
 https://mutalyzer.nl/
 
@@ -277,7 +315,7 @@ https://mutalyzer.nl/
 
 
 
-## Annotation of clinical significance
+## Step6: Annotation of clinical significance
 
 
 
