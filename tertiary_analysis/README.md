@@ -2,9 +2,26 @@
 
 As next-generation sequencing becoming more and more common in both clinics and medical research, interpretation of those sequencing data into biological and clinical useful information becomes the key to unraveling genome mystery. Generally, NGS data analysis usually consists of three major steps: 1) primary analysis, which converted raw sequencing signal into digital data (fastq file); 2) secondary analysis, where the most computationally intensive works occurs, perform alignment and variant calling, thus converted fastq file into varaint calling format file (VCF); and 3) tertiary analysis, interpretation of the VCF file, which involves biological classification of identified variants, determination of clinical relevance and provide actionable clinical advices such as drugs or therapies. 
 
-This article will briefly address some key steps involved in tertiary analysis in cancer, and provide some plausible solution to some of issues.
+This article will briefly address some key steps involved in tertiary analysis in **cancer**, and provide some plausible solution to some of issues.
 
+## Overview
 
+Tertiary Analysis involves two key questions: **classification of variants** and **representation of variants**. Unlike in Mendelian diseases , where variants are classified based on pathogenicity ([Richards et al., 2015](https://www.nature.com/articles/gim201530)), interpretation of cancer somatic variation should be focused on their impact on clinical care ([Li et al., 2017](https://www.ncbi.nlm.nih.gov/pubmed/27993330/)). i.e. four-tier classification: Variants of strong clinical significance, variants of potential clinical significance, variants of unknown clinical significance and benign or likely benign variants. Shown in figure below: 
+
+![image-20191219093850372](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/cancer_variants_classification.png?raw=true)
+
+As you may noticed, the tier IV seems a little bit discordant with other three tiers. The word "benign" is actually a description of variants' pathogenic feature. And that is exactly how the guideline told us. 
+
+> Categorization and interpretation of tier IV variants may refer to recently published ACMG/AMP standards and guidelines for the interpretation of
+> germline sequence variants.
+
+Below is the criteria for classifying benign variants.
+
+![image-20191219092415015](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/benign_classification.png?raw=true)
+
+The overall logic procedures for tertiary analysis here involves three steps. First, remove all benign variants. Second, merge all MNVs and classify the rest of variants into three categories. Third, denote variants with HGVS nomenclature. 
+
+ 
 
 ## Step1: Normalisation of VCF
 
@@ -12,7 +29,7 @@ Variant calling software like Mutect2 generates VCF file that slightly differ fr
 
 1. variants info for a same genomic position are placed in one record, shown as in below figure
 
-   ![image1](https://raw.githubusercontent.com/ZKai0801/BioinfoStuff/figures/figures/multiallelic-sites.png)
+   ![image-20191213095536400](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/multiallelic-sites.png?raw=true)
 
    In the above figure, allele TC is believed to mutate into both CT and CC allele. Sites like this, is so called multiallelic sites, which should be splitted into two VCF records. 
 
@@ -273,7 +290,7 @@ See HGVS annotation section for solution
 
 MNVs (multi-nucleotide variants) defined as two or more nearby variants existing on the same haplotype in an individual, are a clinically and biologically important class of genetic variation. (Wang et al., 2019)
 
-![image2](https://raw.githubusercontent.com/ZKai0801/BioinfoStuff/figures/figures/mnv.png)
+![image2](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/mnv.png?raw=true)
 
  For instance, the two variants depicted in [Fig. 1b](https://www.biorxiv.org/content/10.1101/573378v2.full#F1) are each predicted individually to have missense consequences, but in combination result in a nonsense variant. (Wang et al., 2019)
 
