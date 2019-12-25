@@ -1,8 +1,8 @@
-# Tertiary Analysis
+# Tertiary Analysis (unfinished)
 
 As next-generation sequencing becoming more and more common in both clinics and medical research, interpretation of those sequencing data into biological and clinical useful information becomes the key to unraveling genome mystery. Generally, NGS data analysis usually consists of three major steps: 1) primary analysis, which converted raw sequencing signal into digital data (fastq file); 2) secondary analysis, where the most computationally intensive works occurs, perform alignment and variant calling, thus converted fastq file into varaint calling format file (VCF); and 3) tertiary analysis, interpretation of the VCF file, which involves biological classification of identified variants, determination of clinical relevance and provide actionable clinical advices such as drugs or therapies. 
 
-This article will briefly address some key steps involved in tertiary analysis in **cancer**, and provide some plausible solution to some of issues.
+This note will briefly address some key steps involved in tertiary analysis in **cancer**, and provide some plausible solution to some of issues.
 
 ## Overview
 
@@ -19,9 +19,7 @@ Below is the criteria for classifying benign variants.
 
 ![image-20191219092415015](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/benign_classification.png?raw=true)
 
-The overall logic procedures for tertiary analysis here involves three steps. First, remove all benign variants. Second, merge all MNVs and classify the rest of variants into three categories. Third, denote variants with HGVS nomenclature. 
-
- 
+So the overall logic procedures for tertiary analysis here involves three steps. Firstly, normalise VCF file and filter out any deemed "false positive" variants. (This step actually belongs to secondary analysis) Secondly, merge MNVs and annotate VCF file. And finally, remove all benign variants. 
 
 ## Step1: Normalisation of VCF
 
@@ -46,17 +44,51 @@ bcftools norm -f ${hg19fa} ${sampleID}.somatic.raw.split.vcf --threads ${threads
 
 ```
 
+## Step2: Filter false positive variants
 
+To confidently call a variant, people usually filter variants based on three points:
 
-## Step2: Filter-based annotation
+- a minimal allelic depth
+- a minimal allele frequency 
+- sites listed in in-house built blacklist (variants that frequently seen in multiple sample, maybe caused by problem in panel)
 
-Three major annotation softwares are: Annovar, ensembl-VEP and snpEFF
+## Step3: merge MNVs
+
+MNV (multi-nucleotide variant) is defined as two or more nearby variants existing on the same haplotype in an individual, is a clinically and biologically important class of genetic variation. (Wang et al., 2019)
+
+![image2](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/mnv.png?raw=true)
+
+ For instance, the two variants depicted in [Fig. 1b](https://www.biorxiv.org/content/10.1101/573378v2.full#F1) are each predicted individually to have missense consequences, but in combination result in a nonsense variant. (Wang et al., 2019)
+
+***in cis***  -- variants occur on same haplotype
+
+***in trans*** -- variants occur on different haplotype
+
+**Phasing methods:**
+
+1. read-based phasing
+
+   assesses whether nearby variants co-segregate on the same reads in DNA sequencing data
+
+2. family-based phasing
+
+   assesses whether pairs of variants are co-inherited within families
+
+3. population-based phasing
+
+   leverages haplotype sharing between members of a large genotyped population to make a statistical inference of phase
+
+Therefore, it is essential to correctly identify and annotate MNVs. GATK, contains phasing information on its output file, which provides a convenient way to identifying MNVs. For further details, please see script [merge_mnv.py](https://github.com/ZKai0801/BioinfoStuff/blob/master/tertiary_analysis/merge_mnv.py)  in this package.
+
+## Step4: Annotation
+
+Bear in mind that what we really want to do in annotation step: 1) understand clinical significance of each variant and 2) understand benignity of each variant. Of course, the more annotation softwares/databases we used, the more likely we can get our desired information. But on the hand, more tools/database we used, it more likely we get discrepancy between each tool/databases, and increasingly difficulty to utilise those information. In order to solve these discordance, we need to prioritise variants with clinical significance, then look at rest of variants and tell which one is VUS or benign. Information regarding each variant should also be categorize into different categories. For example, no matter how many functional studies can be found to support one variant is benign, this can only be treated as one score for BS4 (see last section for details).
+
+Currently, there are three major annotation softwares: Annovar, ensembl-VEP and snpEFF
 
 This blog here compare there three annotation tools in detail:
 
 https://blog.goldenhelix.com/the-sate-of-variant-annotation-a-comparison-of-annovar-snpeff-and-vep/
-
-
 
 Here, I used both Annovar and VEP to annotate my vcf files and merge information from them together
 
@@ -70,149 +102,17 @@ perl table_annovar.pl ${sampleID}.somatic.split.norm.vcf ${humandb} \
 --operation g,f,f,f,f,f,f,f,f  --vcfinput --remove --intronhgvs 50
 ```
 
-
-
 VEP:
 
 ```
-vep  --dir /data/ngs/ltj_data/vep_grch37_bak --cache --offline --cache_version 98  --refseq --assembly GRCh37  --fa  /data/ngs/database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta --force_overwrite --vcf --variant_class --gene_phenotype --vcf_info_field ANN --hgvs --hgvsg --transcript_version -i kaohe.somatic.split.norm.vcf -o kaohe.somatic.split.norm.vep_refseq_1.vcf
+vep  --dir ${vep_dir} --cache --offline --cache_version 98  --refseq --assembly GRCh37 --fa ${fasta} --force_overwrite --vcf --variant_class --gene_phenotype --vcf_info_field ANN --hgvs --hgvsg --transcript_version -i ${input} -o ${output}
 ```
 
+## Key problem1: HGVS annotation
 
+HGVS nomenclature is a system that describes sequence variation. This website provide a way to correct HGVS annotation: https://mutalyzer.nl/. As HGVS system not only annotates variant based on genomic coordinate, but also in resulted transcripts changes and amino acid sequences changes, the correct annotation on which transcript become vital. After tried a number of annotation  tools, Ensembl-VEP (version 98.3 and later version) can correctly annotate HGVS name to variants. (Well, I can't say one hundred percent correct, but so far they all looks fine) Below section shows a key problem I encountered during HGVS annotation. 
 
-
-
-## Step3: Filter
-
-Filter out benign variants 
-
-So the key step here is to determine if the variant is benign. 
-
-
-
-
-
-```bash
-python3 snv_filter.py ${sampleID}.anno.somatic.hg19_multianno.vcf 
-```
-
-
-
-**
-
-**How to get reference sequence based on genomic coordinate ?**
-
-1. R package -- `GenomicRanges::GRanges`
-2. Python package -- `pyfaidx` 
-
-
-
-This is how samtools make index for Fasta file allowing fast sequence retrieving :
-
-http://www.htslib.org/doc/faidx.html
-
-> |  Colname  |                           Details                            |
-> | :-------: | :----------------------------------------------------------: |
-> |   NAME    |               Name of this reference sequence                |
-> |  LENGTH   |      Total length of this reference sequence, in bases       |
-> |  OFFSET   | Offset in the FASTA/FASTQ file of this sequence's first base |
-> | LINEBASES |               The number of bases on each line               |
-> | LINEWIDTH |   The number of bytes in each line, including the newline    |
-
-
-
-Below is a script I wrote to retrieve reference sequence (before I found those two packages... )
-
-```python
-__doc__ = """
-Use genomic coordinate to extract sequence from FASTA file
-The fasta file need to be indexed in advanced using samtools
-See "main" for example usage
-"""
-__author__ = "Zhentian Kai"
-__date__ = "2019/11/04"
-
-import pandas as pd
-from collections import defaultdict
-import os
-
-
-def extract_seq(genomic_coordinate, reference_genome="hg19.fasta"):
-    """
-    :param: genomic_coordinate: a tuple, e.g. (chr1, 100, 1000)
-    :param: reference_genome: path to the FASTA file
-    ** fadix_dict = {'seq_name': (length, offset, linebase), ...}
-    """
-    fadix = reference_genome + ".fai"
-    fadix_dict = read_fadix(fadix)
-
-    if (genomic_coordinate[1] > fadix_dict[genomic_coordinate[0]][0] or 
-        genomic_coordinate[2] > fadix_dict[genomic_coordinate[0]][0] or 
-        genomic_coordinate[1] < 0 or 
-        genomic_coordinate[2] < 0):
-        raise ValueError("Genomic coordinate fall outside of FASTA boundaries")
-    elif genomic_coordinate[1] > genomic_coordinate[2]:
-        raise ValueError("End index MUST be bigger than or equal with start index")
-
-    start_line_index = genomic_coordinate[1] // fadix_dict[genomic_coordinate[0]][2]
-    start_index = genomic_coordinate[1] % fadix_dict[genomic_coordinate[0]][2]
-    end_line_index = genomic_coordinate[2] // fadix_dict[genomic_coordinate[0]][2]
-    end_index = genomic_coordinate[2] % fadix_dict[genomic_coordinate[0]][2]
-    
-    # ----------- get sequence ------------- #
-    if start_line_index == end_line_index:
-        with open(reference_genome, "r") as fh:
-            # set offset 
-            fh.seek(fadix_dict[genomic_coordinate[0]][1])
-            for index, line in enumerate(fh):    
-                    if index == start_line_index:
-                        seq = line[start_index-1: end_index]
-                        return seq
-
-    elif end_line_index > start_line_index:
-        seq = ''
-        with open(reference_genome, "r") as fh:
-            # set offset 
-            fh.seek(fadix_dict[genomic_coordinate[0]][1])
-            for index, line in enumerate(fh):
-                    if index == start_line_index:
-                        seq += line[start_index-1: fadix_dict[genomic_coordinate[0]][2]]
-                    elif start_line_index < index < end_line_index:
-                        seq += line[:fadix_dict[genomic_coordinate[0]][2]]
-                    elif index == end_line_index:
-                        seq += line[:end_index]
-                        break
-        return seq
-    
-    else:
-        raise ValueError("End index MUST be bigger than or equal with start index")
-    
-
-
-def read_fadix(fadix):
-    """
-    fadix for FASTA file has five columns,
-    see samtools for details:
-    http://www.htslib.org/doc/faidx.html
-    :param: fadix -- path to the fadix file
-    :return: fadix_dict = {'seq_name':(length, offset, linebase), ...}
-    """
-    fadix_dict = {}
-    df = pd.read_csv(fadix, sep="\t", header=None)
-    for index, row in df.iterrows():
-        fadix_dict[row[0]] = (row[1], row[2], row[3])
-    return fadix_dict
-
-
-if __name__ == "__main__":
-    print(extract_seq(("chr11_gl000202_random", 1000, 1500)))
-```
-
-
-
-
-
-## Notes: Indel Normalisation
+## Key problem2: Indel Normalisation
 
 The position of InDel is not unique in the reference. For example:
 
@@ -222,8 +122,6 @@ left-alignment : CGTATGATCTA [--GCGC] TAGCTAGCTAGC
 right-alignment: CGTATGATCTA [GCGC--] TAGCTAGCTAGC
 ```
 
-
-
 This issue does not only affect on annotation, but also affects varaint calling step. Here is a question posted on GATK forum this year:
 
 > Hello,
@@ -231,26 +129,18 @@ This issue does not only affect on annotation, but also affects varaint calling 
 
 Sadly, GATK team haven't solve this issue yet.
 
-
-
 Here is a detailed slides addressing this issue:
 
 https://genome.sph.umich.edu/w/images/b/b4/Variant_Calling_and_Filtering_for_INDELs.pdf
-
-
 
 In the standards and guidelines for interpretation and reporting of sequence variant made by AMP-ACMG-CAP, they mentioned:
 
 > Although the HGVS system recommends right-aligned (shifting the start
 > position of the variant to the right until it is no longer possible to do so) representation of sequence variants, VCF specifications require left-aligned representation.
 
-
-
 VCF format also specifiy denotion of indel:
 
 >For InDels, the reference String must include the base before the event (which must be reflected in the POS field). (String, Required).
-
-
 
 ### Left-alignment
 
@@ -267,86 +157,39 @@ Most of database use left-alignment system, for example:
 
 > Since left-normalization is gaining more and more popularity, my suggestion is to just use left-normalization, and that database curators as well as users both use this practice, so that we can compare apples to apples. —ANNOVAR
 
-
-
 Therefore, in order to annotate correct information for a given variant, we need to left align all indels:
 
 ```bash
 bcftools norm -f ${reference} [input] -o [output]
 ```
 
-
-
 ### Right-alignment
 
 Right-alignment is much harder to achieve than left-alignment. Left-alignment is simly move indel to the 5' end of reference until it is not possible to do so, whereas in right-alignment, we need to consider which transcript the variant lies on. If the transcript lie on forward strand, then just move indels to 5'; else, move indels to the opposite direction. 
 
-See HGVS annotation section for solution
-
-
-
-
-## Step4: merge MNV 
-
-MNVs (multi-nucleotide variants) defined as two or more nearby variants existing on the same haplotype in an individual, are a clinically and biologically important class of genetic variation. (Wang et al., 2019)
-
-![image2](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/mnv.png?raw=true)
-
- For instance, the two variants depicted in [Fig. 1b](https://www.biorxiv.org/content/10.1101/573378v2.full#F1) are each predicted individually to have missense consequences, but in combination result in a nonsense variant. (Wang et al., 2019)
-
- 
-
-***in cis***  -- variants occur on same haplotype
-
-***in trans*** -- variants occur on different haplotype
-
-
-
-**Phasing methods:**
-
-1. read-based phasing
-
-   assesses whether nearby variants co-segregate on the same reads in DNA sequencing data
-
-2. family-based phasing
-
-   assesses whether pairs of variants are co-inherited within families
-
-3. population-based phasing
-
-   leverages haplotype sharing between members of a large genotyped population to make a statistical inference of phase
-
-
-
-See script [merge_mnv.py](https://github.com/ZKai0801/BioinfoStuff/blob/master/tertiary_analysis/merge_mnv.py) for solution
-
-
-
-
-
-## Step5: HGVS annotation
-
-https://mutalyzer.nl/
-
-
-
-
-
-## Step6: Annotation of clinical significance
-
-
-
 ```bash
-# 本脚本注释三种信息：
-# LRG.record -- LRG号
-# LRG.transcript -- LRG号所对应的转录本号
-# LRG.strand -- LRG转录本的正负链信息
-python3 annotate_lrg.py [input_vcf] [parsed_LRG_database]
+vep --dir <dataset> --cache --offline --cache_version 98 --use_given_ref --refseq --assembly GRCh37  --fa  <reference_fasta> --force_overwrite --vcf --variant_class --gene_phenotype --vcf_info_field ANN --hgvs --hgvsg --transcript_version -i input.vcf -o output.vcf 
 ```
 
+## Step5: Remove benign variants
 
+Filter out benign variants 
 
+![benign_classification2](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/benign_classification2.png?raw=true)
 
+But as we can see from figure 2, not many criteria can be used to determine the benign status of a somatic variants. 
 
+1. BA -- population freq > 1% in ESP, 1000 genome project or ExAC (dbSNP use gnomAD freq)
+2. BS1 -- population freq > freq in rare disease (orphatNet) by 1%
+3. BS2 -- For early on-set cancer, if the variants found in 1000g project, then viewed them as benign
+4. BS3 -- build an internal database that show no damaging effect made by the variant
+5. BS4 --  for hereditary cancer, no segregation in affected members of a family
+6. BP1 -- missense variant in a gene (tumor suppressor genes) for which primarily truncating variants are known to cause disease
+7. BP2 -- dropped
+8. BP3 -- In-frame deletions/insertions in a repetitive region without a known function
+9. BP4 -- multiple computational prediction software shows no impact
+10. BP5 -- dropped
+11. BP6 -- reputable sources (database such as clinvar, HGMD) show them as benign
+12. BP7 -- synonymous variant that are predicted have no impact on splicing
 
 
