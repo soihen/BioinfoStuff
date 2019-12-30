@@ -90,7 +90,7 @@ This blog here compare there three annotation tools in detail:
 
 https://blog.goldenhelix.com/the-sate-of-variant-annotation-a-comparison-of-annovar-snpeff-and-vep/
 
-Here, I used both Annovar and VEP to annotate my vcf files and merge information from them together
+Usage Example:
 
 Annovar:
 
@@ -108,11 +108,15 @@ VEP:
 vep  --dir ${vep_dir} --cache --offline --cache_version 98  --refseq --assembly GRCh37 --fa ${fasta} --force_overwrite --vcf --variant_class --gene_phenotype --vcf_info_field ANN --hgvs --hgvsg --transcript_version -i ${input} -o ${output}
 ```
 
+However, using VEP and Annovar alone is not enough to get what we want. We still need to obtain clinics information regarding to each variant, which required us to search in variety of databases. [OncoKB](https://www.oncokb.org/), a precision oncology knowledge base, provides a tiered system that classified biomarkers into 6 levels (4 therapeutic levels + 2 resistance level). These 6 levels of evidence can be easily categorized into the first two tiers of variant classification. Other database such as [civix](https://civicdb.org/), [clinvar](https://www.ncbi.nlm.nih.gov/clinvar/), [HGMD](http://www.hgmd.cf.ac.uk/ac/index.php) and etc also provides very useful information regarding to pathogenicity or clinical impacts on each variant. 
+
 ## Key problem1: HGVS annotation
 
-HGVS nomenclature is a system that describes sequence variation. This website provide a way to correct HGVS annotation: https://mutalyzer.nl/. As HGVS system not only annotates variant based on genomic coordinate, but also in resulted transcripts changes and amino acid sequences changes, the correct annotation on which transcript become vital. After tried a number of annotation  tools, Ensembl-VEP (version 98.3 and later version) can correctly annotate HGVS name to variants. (Well, I can't say one hundred percent correct, but so far they all looks fine) Below section shows a key problem I encountered during HGVS annotation. 
+HGVS nomenclature is a system that describes sequence variation. This website provide a way to correct HGVS annotation: https://mutalyzer.nl/. As HGVS system not only annotates variant based on genomic coordinate, but also in resulted transcripts changes and amino acid sequences changes, the correct annotation on which transcript become vital. After tried a number of annotation  tools, Ensembl-VEP (version 98.3 and later version) can correctly annotate HGVS name to variants (Well, I can't say one hundred percent correct, but so far they all looks fine). However, when we report variants, we generally report only ONE transcript that has most clinical impact for each variant. To determine which transcript should be reported, the database Locus Reference Genomic ([LRG](https://www.lrg-sequence.org/)) need to be used. But LRG only contains roughly 1300 records (genes) so far, compared with around 12,000 ~ 50,000 genes in human genome. For the rest of genes, we need to report the longest transcript. 
 
 ## Key problem2: Indel Normalisation
+
+Indel normalisation is actually a key step during HGVS annotation. Difference in indel positions may result in different amino acid sequence changes. 
 
 The position of InDel is not unique in the reference. For example:
 
@@ -177,7 +181,7 @@ Filter out benign variants
 
 ![benign_classification2](https://github.com/ZKai0801/BioinfoStuff/blob/figures/figures/benign_classification2.png?raw=true)
 
-But as we can see from figure 2, not many criteria can be used to determine the benign status of a somatic variants. 
+But as we can see from figure 2, not many criteria can be used to determine the benign status of a somatic variants in cancer.  
 
 1. BA -- population freq > 1% in ESP, 1000 genome project or ExAC (dbSNP use gnomAD freq)
 2. BS1 -- population freq > freq in rare disease (orphatNet) by 1%
