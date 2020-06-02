@@ -7,9 +7,11 @@
 # This pipeline perform:
 # Trimming (fastp) + Alignment (bwa) + statistic analysis + Deduplication (optional) + SNV/INDEL calling (TNscope)
 #
-# Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture based), user can choose to either perform
-# or not perform deduplication step. 
-# PON is not used by default, user can add it themselves if they have one
+# 1. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture based), user can choose to either 
+#    perform or not perform deduplication step. 
+# 2. PON is NOT used by default, user can add it themselves if they have one
+# 3. BED file is also NOT used by default, as BED file will only specify regions of variant calling. This aim can be 
+#    achieve equally by filtering obtained VCF file based on genomic coordinate.
 
 
 input_folder=$1
