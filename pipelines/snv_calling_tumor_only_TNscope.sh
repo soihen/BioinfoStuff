@@ -1,33 +1,37 @@
 #!/usr/bin/bash
 
-# ---------------- Description ----------------- #
-# Noted: You need to purchase sentieon's license #
-# for use of this pipeline.                      #
-# ---------------------------------------------- #
-# Perform:
-#   Trimming (fastp) + 
-#   Alignment (bwa) + 
-#   statistic analysis +
-#   Deduplication (optional) +
-#   SNV/INDEL calling (TNscope)
+# ----------------------------------- Description ------------------------------------- #
+#      Noted: You need to purchase sentieon's license for use of this pipeline.         #
 # ------------------------------------------------------------------------------------- #
-# Usage:
-#   [admin@kai]$bash snv_calling_tumor_only_TNscope.sh [input_folder] [output_folder]
-# 
-# input_folder should contain pair-end sequenced Fastq files.
-# Each sample is expected to have two Fastq files, with naming convention of:
-# ${sampleID}_R[1|2].fastq.gz
+# Perform:                                                                              #
+#   Trimming (fastp) +                                                                  #
+#   Alignment (bwa) +                                                                   #
+#   statistic analysis +                                                                #
+#   Deduplication (optional) +                                                          #
+#   SNV/INDEL calling (TNscope)                                                         #
 # ------------------------------------------------------------------------------------- #
-# 1. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture based), 
-#    user can choose to either perform or not perform deduplication step. 
-# 2. PON is NOT used by default, user can add it themselves if they have one
-# 3. BED file is also NOT used by default, as BED file will only specify regions of variant calling. 
-#    This aim can be achieve equally by filtering obtained VCF file based on genomic coordinate.
-# -------------------------------------------------------------------------------------- #
+# Usage:                                                                                #
+#   [admin@kai]$bash snv_calling_tumor_only_TNscope.sh [input_folder] [output_folder]   #
+#                                                                                       #
+# input_folder should contain pair-end sequenced Fastq files.                           #
+# Each sample is expected to have two Fastq files, with naming convention of:           #
+# ${sampleID}_R[1|2].fastq.gz                                                           #
+# ------------------------------------------------------------------------------------- #
+# 1. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture     #
+#    based), user can choose to either perform or not perform deduplication step.       #
+# 2. PON is NOT used by default, user can add it themselves if they have one            #
+# 3. BED file is also NOT used by default,                                              #
+#    as BED file will only specify regions of variant calling.                          #
+#    This aim can be achieve equally by filtering obtained VCF file based on            #
+#    genomic coordinate.                                                                #
+# ------------------------------------------------------------------------------------- #
 
 
 input_folder=$1
 output_folder=$2
+
+if [[ ! -d $output_folder ]]; then
+    mkdir $output_folder
 
 ################# set parameters ##################
 sentieon_license="xxxxxxx"
