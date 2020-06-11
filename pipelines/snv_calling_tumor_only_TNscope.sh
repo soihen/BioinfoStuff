@@ -98,12 +98,12 @@ for ifile in $input_folder/*_R1.fastq.gz
 
     # step4 (optional) - remove duplicates
     if [ $dedup == true ]; then
-        ${sentieon} driver -t ${threads} \
+        ${sentieon} driver -t ${thread} \
         -i ${align_dir}/${sampleID}.sorted.bam \
         --algo LocusCollector \
         --fun score_info ${align_dir}/${sampleID}.score.txt;
 
-        ${sentieon} driver -t ${threads} \
+        ${sentieon} driver -t ${thread} \
         -i ${align_dir}/${sampleID}.sorted.bam \
         --algo Dedup --score_info ${align_dir}/${sampleID}.score.txt \
         --metrics ${align_dir}/${sampleID}.dedup_metrics.txt \
