@@ -23,7 +23,7 @@ def read_bed(bed):
     with open(bed, 'r') as f:
         for line in f:
             line = line.strip().split()
-            chrom = line[0].lower().replace("chr", "")
+            chrom = line[0].lower().lstrip("chr")
             bedinfo[chrom].append((int(line[1]), int(line[2])))
     return bedinfo
 
@@ -36,20 +36,21 @@ def subsample_maf(maf, bedinfo, outfile):
     :param outfile: the output MAF filename
     :return:
     """
-    drops = []
-    df = pd.read_csv(maf, sep="\t", comment="#", low_memory=False)
-    for index, row in df.iterrows():
-        chrom = str(row['Chromosome']).lower().replace("chr", "")
-        # catch mutants that locate inside bed intervals
-        for start, end in bedinfo[chrom]:
-            if row['Start_Position'] >= start and row['End_Position'] <= end:
-                break
-        else:
-            drops.append(index)
-
-    df = df.drop(drops)
-    df.to_csv(outfile, sep="\t", index=False)
-
+    with open(maf, "r") as fh, open(outfile, "w") as fw:
+        for index, line in enumerate(fh):
+            new_line = line.split("\t")
+            if index == 0:
+                chrom_index = new_line.index("Chromosome")
+                start_index = new_line.index("Start_Position")
+                end_index = new_line.index("End_Position")
+                fw.write(line)
+                continue
+            chrom = new_line[chrom_index].lower().lstrip("chr")
+            for start, end in bedinfo[chrom]:
+                if start <= int(new_line[start_index]) <= int(new_line[end_index]) <= end:
+                    fw.write(line)
+                    break
+                    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
