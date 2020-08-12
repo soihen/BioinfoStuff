@@ -124,8 +124,8 @@ for ifile in $input_folder/*_R1.fastq.gz
 
     # step6 - variant calling (TNscope)
     snv_dir=$output_folder/snv/;
-    if [[ ! -d $align_dir ]]; then
-        mkdir $align_dir
+    if [[ ! -d $snv_dir ]]; then
+        mkdir $snv_dir
     fi
     ${sentieon} driver -t ${thread} -r ${ref} \
     -i ${bam} -q ${align_dir}/${sampleID}.recal.table \
