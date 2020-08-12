@@ -32,7 +32,7 @@ output_folder=$2
 
 if [[ ! -d $output_folder ]]; then
     mkdir $output_folder
-
+fi
 ################# set parameters ##################
 sentieon_license="xxxxxxx"
 thread=16
