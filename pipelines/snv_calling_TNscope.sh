@@ -44,6 +44,17 @@ k3="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_g
 # ------------------------------------------------------- #
 
 
+if [[  $1 == '-h'  ]]; then
+    echo "Usage: ./snv_calling_TNscope.sh [input_folder] [output_folder]"
+    echo "-------------------------------------------------------------------------"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "  single -- \${sampleID}_R[1|2].fastq.gz"
+    echo "  matched -- \${sampleID}_R[1|2].tumor.fastq.gz"
+    exit 0
+fi
+
+
+
 input_folder=$1
 output_folder=$2
 
@@ -183,7 +194,7 @@ if [[  $mode == 'matched' ]]; then
 
 # tumor-only mode 
 elif [[  $mode == 'single'  ]]; then
-    for ifile in $input_folder/*_R1.trimmed.fastq.gz;
+    for ifile in $input_folder/*_R1.fastq.gz;
     do
         sampleID=`basename ${ifile%%"_R1"*}`
 
