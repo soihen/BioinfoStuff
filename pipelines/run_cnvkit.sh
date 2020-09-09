@@ -6,7 +6,7 @@
 #                                                                                       #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash run_cnvkit.sh [input_folder] [output_folder] #
+#   [admin@kai]$bash run_cnvkit.sh [input_folder] [output_folder]                       #
 #                                                                                       #
 # Depends on existance of normal samples, CNVkit can be run in 'flat' mode (no normal)  #
 # or in 'normal' mode (has normals).                                                    #
@@ -31,7 +31,7 @@ dedup=true
 
 thread=16
 
-# path to cnvkit package
+# path to software
 cnvkit="/public/software/cnvkit/"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
@@ -43,6 +43,19 @@ refflat="/data/ngs/database/soft_database/GATK_Resource_Bundle/refFlat.txt"
 bed="/public/shared_data/HRD测试数据/HRDinsert.bed"
 pon=""
 # ------------------------------------------------------- #
+
+
+if [[ $1 == "-h"  ]];
+then
+    echo "Usage: bash run_cnvkit.sh [input_folder] [output_folder]"
+    echo "============================================================"
+    echo "You need specify paths to each software packages and files "
+    echo "inside this bash script."
+    echo "If panel of normals (pon) is not provided, then pon will "
+    echo "be automately computed based on provided normal samples "
+    echo "or be created as a flat reference"
+    exit 0
+fi
 
 
 input_folder=$1
@@ -74,6 +87,8 @@ ${cnvkit}/cnvkit.py antitarget $cnv_dir/target.bed \
 
 
 if [[  $mode == "matched"  ]]; then
+    echo "LOGGING: Running CNVkit on tumor-normal mode";
+
     for ifile in $input_folder/*_R1.tumor.fastq.gz;
     do 
         sampleID=`basename ${ifile%%"_R1"*}`
@@ -213,12 +228,12 @@ if [[  $mode == "matched"  ]]; then
     if [[  ! -f $pon  ]];
     then
         # prepare baseline
-        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- generate CNV baseline";
+        echo "LOGGING: `date --rfc-3339=seconds` -- generate CNV baseline";
 
         ${cnvkit}/cnvkit.py reference ${cnv_dir}/*normal*cnn \
-        -f ${ref} -o ${cnv_dir}/baseline.cnn;
+        -f ${ref} -o ${cnv_dir}/reference.cnn;
 
-        pon=${cnv_dir}/baseline.cnn
+        pon=${cnv_dir}/reference.cnn
     fi
     
 
@@ -262,7 +277,109 @@ if [[  $mode == "matched"  ]]; then
     done
 
 elif [[  $mode == 'single'  ]]; then
-    echo
+    echo "LOGGING: Running CNVkit on tumor-only mode";
+
+    for ifile in $input_folder/*_R1.fastq.gz;
+    do
+        sampleID=`basename ${ifile%%"_R1"*}`
+
+        # step1 - trim reads
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";      
+
+        trim_dir=$output_folder/trim/;
+        if [[ ! -d $trim_dir ]]; then
+            mkdir $trim_dir
+        fi
+        $fastp --in1 $input_folder/${sampleID}_R1.fastq.gz \
+        --in2 $input_folder/${sampleID}_R2.fastq.gz \
+        --out1 $trim_dir/${sampleID}_trim_R1.fastq.gz \
+        --out2 $trim_dir/${sampleID}_trim_R2.fastq.gz \
+        -c --length_required 3 --detect_adapter_for_pe -p \
+        --thread ${thread} \
+        --html $trim_dir/${sampleID}.trim.html \
+        --json $trim_dir/${sampleID}.trim.json;
+
+        # step2 - align & sort
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
+
+        align_dir=$output_folder/align/;
+        if [[ ! -d $align_dir ]]; then
+            mkdir $align_dir
+        fi
+        ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
+        -t ${thread} -K 10000000 ${ref} \
+        $input_folder/${sampleID}_R1.trimmed.fastq.gz \
+        $input_folder/${sampleID}_R2.trimmed.fastq.gz \
+        || echo -n 'error' ) \
+        | ${sentieon} util sort -r ${ref} -o ${align_dir}/${sampleID}.sorted.bam \
+        -t ${thread} --sam2bam -i -;
+
+        # step3 (optional) - remove duplicates
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- deduplication";
+
+        if [ $dedup == true ]; then
+            ${sentieon} driver -t ${thread} \
+            -i ${align_dir}/${sampleID}.sorted.bam \
+            --algo LocusCollector \
+            --fun score_info ${align_dir}/${sampleID}.score.txt;
+
+            ${sentieon} driver -t ${thread} \
+            -i ${align_dir}/${sampleID}.sorted.bam \
+            --algo Dedup --rmdup --score_info ${align_dir}/${sampleID}.score.txt \
+            --metrics ${align_dir}/${sampleID}.dedup_metrics.txt \
+            ${align_dir}/${sampleID}.sorted.dedup.bam;
+        fi
+
+
+        if [[  ! -f $pon  ]];
+        then
+            # prepare flat reference 
+            echo "LOGGING: `date --rfc-3339=seconds` -- generate flat reference";
+
+            ${cnvkit}/cnvkit.py reference -f ${ref} \
+            -t $cnv_dir/target.bed -a $cnv_dir/antitarget.bed \
+            -o ${cnv_dir}/reference.flat.cnn;
+
+            pon=${cnv_dir}/reference.flat.cnn;
+        fi
+
+
+        if [ $dedup == true ]; then
+            bam=${align_dir}/${sampleID}.sorted.dedup.bam
+        else
+            bam=${align_dir}/${sampleID}.sorted.bam
+        fi
+
+        # step4 -- CNA calling
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- CNA calling";      
+
+        ${cnvkit}/cnvkit.py coverage ${bam} $cnv_dir/target.bed \
+        -p ${thread} -o ${cnv_dir}/${sampleID}.tumor.targetcoverage.cnn;
+
+        ${cnvkit}/cnvkit.py coverage ${bam} $cnv_dir/antitarget.bed \
+        -p ${thread} -o ${cnv_dir}/${sampleID}.tumor.antitargetcoverage.cnn;
+
+        ${cnvkit}/cnvkit.py fix \
+        ${cnv_dir}/${sampleID}.tumor.targetcoverage.cnn \
+        ${cnv_dir}/${sampleID}.tumor.antitargetcoverage.cnn \
+        $pon \
+        -o ${cnv_dir}/${sampleID}.cnr;
+
+        ${cnvkit}/cnvkit.py segment \
+        ${cnv_dir}/${sampleID}.cnr \
+        --drop-low-coverage \
+        -p ${thread} --smooth-cbs \
+        -o ${cnv_dir}/${sampleID}.cns;
+
+        ${cnvkit}/cnvkit.py call \
+        ${cnv_dir}/${sampleID}.cns \
+        --center -o ${cnv_dir}/${sampleID}.call.cns;
+
+        ${cnvkit}/cnvkit.py scatter \
+        ${cnv_dir}/${sampleID}.cnr \
+        -s ${cnv_dir}/${sampleID}.cns \
+        -o ${cnv_dir}/${sampleID}.scatter.png;
+
 fi
 
 
