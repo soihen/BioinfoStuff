@@ -33,6 +33,7 @@ thread=16
 
 # path to software
 cnvkit="/public/software/cnvkit/"
+fastp="/usr/local/bin/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
 sentieon_license="192.168.1.186:8990"
@@ -40,8 +41,8 @@ sentieon_license="192.168.1.186:8990"
 # additional files
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 refflat="/data/ngs/database/soft_database/GATK_Resource_Bundle/refFlat.txt"
-bed="/public/shared_data/HRD测试数据/HRDinsert.bed"
-pon=""
+bed="/public/database/bed/DU.bed"
+pon="/public/test_data/cnvkit_test/cnvkit/reference.cnn"
 # ------------------------------------------------------- #
 
 
@@ -58,6 +59,8 @@ then
 fi
 
 
+# -------------------------------
+# create output directory
 input_folder=$1
 output_folder=$2
 
@@ -66,17 +69,30 @@ then
     mkdir $output_folder
 fi
 
+trim_dir=$output_folder/trim/;
+if [[ ! -d $trim_dir ]]; then
+    mkdir $trim_dir
+fi
 
-export SENTIEON_LICENSE=${sentieon_license};
+align_dir=$output_folder/align/;
+if [[ ! -d $align_dir ]]; then
+    mkdir $align_dir
+fi
 
-
-# step0 -- prepare BED file;
-echo "LOGGING: `date --rfc-3339=seconds` -- prepare (anti-)target BED files"
+snp_dir=$output_folder/tnsnv/;
+if [[  ! -d $snp_dir  ]]; then
+    mkdir $snp_dir
+fi
 
 cnv_dir=$output_folder/cnvkit/;
 if [[  ! -d $cnv_dir  ]]; then
     mkdir $cnv_dir
 fi
+# -------------------------------
+
+
+# step0 -- prepare BED file;
+echo "LOGGING: `date --rfc-3339=seconds` -- prepare (anti-)target BED files"
 
 ${cnvkit}/cnvkit.py target ${bed} --annotate ${refflat} \
 --split -o $cnv_dir/target.bed;
@@ -84,6 +100,9 @@ ${cnvkit}/cnvkit.py target ${bed} --annotate ${refflat} \
 ${cnvkit}/cnvkit.py antitarget $cnv_dir/target.bed \
 -g ${cnvkit}/data/access-5k-mappable.hg19.bed \
 -o $cnv_dir/antitarget.bed;
+
+
+export SENTIEON_LICENSE=${sentieon_license};
 
 
 if [[  $mode == "matched"  ]]; then
@@ -95,11 +114,6 @@ if [[  $mode == "matched"  ]]; then
 
         # step1 - trim reads
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";
-
-        trim_dir=$output_folder/trim/;
-        if [[ ! -d $trim_dir ]]; then
-            mkdir $trim_dir
-        fi
 
         $fastp --in1 $input_folder/${sampleID}_R1.tumor.fastq.gz \
         --in2 $input_folder/${sampleID}_R2.tumor.fastq.gz \
@@ -122,11 +136,6 @@ if [[  $mode == "matched"  ]]; then
 
         # step2 - align & sort
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
-
-        align_dir=$output_folder/align/;
-        if [[ ! -d $align_dir ]]; then
-            mkdir $align_dir
-        fi
 
         ($sentieon bwa mem -M -R "@RG\tID:${sampleID}.tumor\tSM:${sampleID}.tumor\tPL:illumina" \
         -t ${thread} -K 10000000 ${ref} \
@@ -177,11 +186,6 @@ if [[  $mode == "matched"  ]]; then
 
         # step4 - SNV/SNP calling using TNsnv
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- SNV/SNP calling";
-
-        snp_dir=$output_folder/tnsnv/;
-        if [[  ! -d $snp_dir  ]]; then
-            mkdir $snp_dir
-        fi
 
         if [[ $dedup == true ]]; then
             normal_bam=${align_dir}/${sampleID}.normal.sorted.dedup.bam
@@ -239,6 +243,14 @@ if [[  $mode == "matched"  ]]; then
 
     for ifile in $input_folder/*_R1.tumor.fastq.gz;
     do
+        sampleID=`basename ${ifile%%"_R1"*}`;
+
+        if [[ $dedup == true ]]; then
+            tumor_bam=${align_dir}/${sampleID}.tumor.sorted.dedup.bam
+        else
+            tumor_bam=${align_dir}/${sampleID}.tumor.sorted.bam
+        fi
+
         # step6 -- CNV calling
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- CNA calling";      
 
@@ -286,10 +298,6 @@ elif [[  $mode == 'single'  ]]; then
         # step1 - trim reads
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";      
 
-        trim_dir=$output_folder/trim/;
-        if [[ ! -d $trim_dir ]]; then
-            mkdir $trim_dir
-        fi
         $fastp --in1 $input_folder/${sampleID}_R1.fastq.gz \
         --in2 $input_folder/${sampleID}_R2.fastq.gz \
         --out1 $trim_dir/${sampleID}_trim_R1.fastq.gz \
@@ -302,10 +310,6 @@ elif [[  $mode == 'single'  ]]; then
         # step2 - align & sort
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
 
-        align_dir=$output_folder/align/;
-        if [[ ! -d $align_dir ]]; then
-            mkdir $align_dir
-        fi
         ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
         -t ${thread} -K 10000000 ${ref} \
         $input_folder/${sampleID}_R1.trimmed.fastq.gz \
@@ -379,6 +383,7 @@ elif [[  $mode == 'single'  ]]; then
         ${cnv_dir}/${sampleID}.cnr \
         -s ${cnv_dir}/${sampleID}.cns \
         -o ${cnv_dir}/${sampleID}.scatter.png;
+    done
 
 fi
 
