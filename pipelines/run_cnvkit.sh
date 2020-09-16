@@ -29,6 +29,10 @@ mode="matched"
 # whether perform deduplicate step (true || false)
 dedup=true
 
+# perform HRD calculation
+# require scarHRD to be installed in R
+hrd=true
+
 thread=16
 
 # path to software
@@ -88,6 +92,12 @@ cnv_dir=$output_folder/cnvkit/;
 if [[  ! -d $cnv_dir  ]]; then
     mkdir $cnv_dir
 fi
+
+hrd_dir=$output_folder/hrd/;
+if [[  ! -d $hrd_dir && $hrd == true ]]; then
+    mkdir $hrd_dir
+fi
+
 # -------------------------------
 
 
@@ -252,7 +262,7 @@ if [[  $mode == "matched"  ]]; then
         fi
 
         # step6 -- CNV calling
-        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- CNA calling";      
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- CNA calling";
 
         ${cnvkit}/cnvkit.py coverage ${tumor_bam} $cnv_dir/target.bed \
         -p ${thread} -o ${cnv_dir}/${sampleID}.tumor.targetcoverage.cnn;
@@ -286,6 +296,26 @@ if [[  $mode == "matched"  ]]; then
         -i ${sampleID}.tumor \
         -n ${sampleID}.normal \
         -o ${cnv_dir}/${sampleID}.scatter.png;
+
+
+        # step7 -- HRD calculation
+        if [[  $hrd == true  ]]; then
+            echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- HRD calculation";
+            
+            awk -F"\t" -v sample=$sampleID ' 
+            BEGIN {OFS="\t"; print "SampleID","Chromosome","Start_position","End_position","total_cn","A_cn","B_cn","ploidy"}; 
+            {if (NR != 1){
+                OFS="\t";
+                print sample,$1,$2,$3,$7,$8,$9,"2";
+            }}' ${cnv_dir}/${sampleID}.call.cns > ${hrd_dir}/${sampleID}.pre_hrd.cns ;
+
+            Rscript -e "library(scarHRD); \
+                        hrd <- scar_score('${hrd_dir}/${sampleID}.pre_hrd.cns'), \
+                                        reference <- 'grch37', \
+                                        seqz=FALSE);
+                        write.csv(hrd, file = '${hrd_dir}/${sampleID}.hrd.csv', row.names=FALSE)"
+        fi
+
     done
 
 elif [[  $mode == 'single'  ]]; then
