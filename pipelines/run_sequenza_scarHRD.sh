@@ -42,6 +42,9 @@ gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 # ------------------------------------------------------- #
 
 
+
+# -------------------------------
+# create output directory
 input_folder=$1
 output_folder=$2
 
@@ -49,6 +52,31 @@ if [[ ! -d $output_folder ]];
 then
     mkdir $output_folder
 fi
+
+trim_dir=$output_folder/trim/;
+if [[ ! -d $trim_dir ]]; then
+    mkdir $trim_dir
+fi
+
+align_dir=$output_folder/align/;
+if [[ ! -d $align_dir ]]; then
+    mkdir $align_dir
+fi
+
+cnv_dir=$output_folder/sequenza_cnv/;
+if [[ ! -d $cnv_dir ]]; then
+    mkdir $cnv_dir
+fi
+
+hrd_dir=${output_folder}/sequenza_HRD/;
+if [[  ! -d $hrd_dir  ]];
+then 
+    mkdir $hrd_dir
+fi
+
+# -------------------------------
+
+
 
 export SENTIEON_LICENSE=${sentieon_license};
 
@@ -58,11 +86,6 @@ do
 
     # step1 - trim reads
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";
-
-    trim_dir=$output_folder/trim/;
-    if [[ ! -d $trim_dir ]]; then
-        mkdir $trim_dir
-    fi
 
     $fastp --in1 $input_folder/${sampleID}_R1.tumor.fastq.gz \
     --in2 $input_folder/${sampleID}_R2.tumor.fastq.gz \
@@ -85,11 +108,6 @@ do
 
     # step2 - align & sort
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
-
-    align_dir=$output_folder/align/;
-    if [[ ! -d $align_dir ]]; then
-        mkdir $align_dir
-    fi
 
     ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
     -t ${thread} -K 10000000 ${ref} \
@@ -141,11 +159,6 @@ do
     # step4 - generate seqz file
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- generating seqz file";
 
-    cnv_dir=$output_folder/sequenza_cnv/;
-    if [[ ! -d $cnv_dir ]]; then
-        mkdir $cnv_dir
-    fi
-
     if [[ $dedup == true ]]; then
         normal_bam=${align_dir}/${sampleID}.normal.sorted.dedup.bam
         tumor_bam=${align_dir}/${sampleID}.tumor.sorted.dedup.bam
@@ -192,12 +205,19 @@ do
 
     # step6 - scarHRD
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- scarHRD ";
-    
+
+    ploidy=$(awk 'NR ==2 {print $2}' $cnv_dir/${sampleID}/${sampleID}_alternative_solutions.txt);
+
+    awk -F"\t" -v ploidy=${ploidy} -v sample=${sampleID} \
+    'BEGIN {OFS="\t"; print "SampleID","Chromosome","Start_position","End_position","total_cn","A_cn","B_cn","ploidy"};
+     NR!=1 {OFS="\t"; print sample,$1,$2,$3,$10,$11,$12,ploidy}' \
+    $cnv_dir/${sampleID}/${sampleID}_segments.txt > $hrd_dir/${sampleID}.pre_hrd.tsv;
+
     Rscript -e "library(scarHRD); \
-    hrd <- scar_score('$cnv_dir/${sampleID}.bin.seqz.gz', \
+    hrd <- scar_score('$hrd_dir/${sampleID}.pre_hrd.tsv', \
                 reference = 'grch37', \
-                seqz = 'TURE'); \
-    write.csv(hrd, row.names = 'TURE', file = '$cnv_dir/${sampleID}.hrd_score.csv')"
+                seqz = 'FALSE'); \
+    write.csv(hrd, row.names = 'FALSE', file = '$hrd_dir/${sampleID}.hrd.csv')"
 done
 
- 
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";

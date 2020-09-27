@@ -33,11 +33,11 @@ dedup=true
 # require scarHRD to be installed in R
 hrd=true
 
-thread=16
+thread=8
 
 # path to software
 cnvkit="/public/software/cnvkit/"
-fastp="/usr/local/bin/fastp"
+fastp="/public/software/fastp/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
 sentieon_license="192.168.1.186:8990"
@@ -45,8 +45,8 @@ sentieon_license="192.168.1.186:8990"
 # additional files
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 refflat="/data/ngs/database/soft_database/GATK_Resource_Bundle/refFlat.txt"
-bed="/public/database/bed/DU.bed"
-pon="/public/test_data/cnvkit_test/cnvkit/reference.cnn"
+bed="/public/test_data/heying_hrd/HRDinsert.bed"
+pon=""
 # ------------------------------------------------------- #
 
 
@@ -304,15 +304,15 @@ if [[  $mode == "matched"  ]]; then
             
             awk -F"\t" -v sample=$sampleID ' 
             BEGIN {OFS="\t"; print "SampleID","Chromosome","Start_position","End_position","total_cn","A_cn","B_cn","ploidy"}; 
-            {if (NR != 1){
+            {if (NR != 1 && $6){
                 OFS="\t";
                 print sample,$1,$2,$3,$7,$8,$9,"2";
             }}' ${cnv_dir}/${sampleID}.call.cns > ${hrd_dir}/${sampleID}.pre_hrd.cns ;
 
             Rscript -e "library(scarHRD); \
-                        hrd <- scar_score('${hrd_dir}/${sampleID}.pre_hrd.cns'), \
-                                        reference <- 'grch37', \
-                                        seqz=FALSE);
+                        hrd <- scar_score('${hrd_dir}/${sampleID}.pre_hrd.cns', \
+                        reference <- 'grch37', \
+                        seqz=FALSE); \
                         write.csv(hrd, file = '${hrd_dir}/${sampleID}.hrd.csv', row.names=FALSE)"
         fi
 
@@ -417,4 +417,4 @@ elif [[  $mode == 'single'  ]]; then
 
 fi
 
-
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";
