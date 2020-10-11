@@ -26,7 +26,7 @@
 
 # -------------------- set parameters ------------------- #
 sentieon_license="192.168.1.186:8990"
-thread=8
+thread=16
 
 # whether perform deduplicate step (true || false)
 dedup=true
@@ -43,9 +43,6 @@ bedtools="/public/software/bedtools2/bin/bedtools"
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
-backbone_bed="/public/home/kai/hrd_project/source_data/twist/backbone_100k_Liftover_success_hg19.bed"
-gene_bed="/public/home/kai/hrd_project/source_data/twist/150genes.probe_merged.p.rev1_hg19.bed"
-
 # ------------------------------------------------------- #
 
 
@@ -54,6 +51,7 @@ gene_bed="/public/home/kai/hrd_project/source_data/twist/150genes.probe_merged.p
 # create output directory
 input_folder=$1
 output_folder=$2
+bed=$3
 
 
 if [[ ! -d $output_folder ]]; 
@@ -89,24 +87,14 @@ fi
 
 # -------------------------------
 
-
-# merge two BED files
-cat ${backbone_bed} ${gene_bed} > $output_folder/concat.bed
-sort -k1,1 -k2,2n $output_folder/concat.bed > $output_folder/concat_sorted.bed
-$bedtools merge -i $output_folder/concat_sorted.bed > $output_folder/merged.bed
-bed="$output_folder/merged.bed"
-
-rm $output_folder/concat.bed $output_folder/concat_sorted.bed
-
-
 echo "sampleID,fastq_size,raw_reads,raw_bases,clean_reads,clean_bases,\
 qc30_rate,mapping_rate(%),on-target_percent(%),\
 mean_depth,mean_dedup_depth,dup_rate(%),\
 average_insert_size,std_insert_size,\
-backbone_50x_depth_percent(%),backbone_100x_depth_percent(%),\
-backbone_150x_depth_percent(%),gene_200x_depth_percent(%),\
-gene_300x_depth_percent(%),gene_400x_depth_percent(%),\
-gene_500x_depth_percent(%)" > $qc_dir/QC_summary.csv
+50x_depth_percent(%),100x_depth_percent(%),\
+150x_depth_percent(%),200x_depth_percent(%),\
+300x_depth_percent(%),400x_depth_percent(%),\
+500x_depth_percent(%)" > $qc_dir/QC_summary.csv
 
 
 export SENTIEON_LICENSE=${sentieon_license};
