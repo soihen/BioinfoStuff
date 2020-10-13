@@ -30,7 +30,7 @@ bed=$3
 trim_dir=$output_folder/trim/;
 align_dir=$output_folder/align/;
 
-qc_dir=$output_folder/qc_gene/;
+qc_dir=$output_folder/qc/;
 if [[ ! -d $qc_dir ]]; then
     mkdir $qc_dir
 fi
@@ -49,9 +49,9 @@ average_insert_size,std_insert_size,\
 
 if [[ $mode == 'matched'  ]];
 then
-    for ifile in $input_folder/*_R1.tumor.fastq.gz;
+    for ifile in $input_folder/*_tumor_R1.fastq.gz;
     do
-        sampleID=`basename ${ifile%%"_R1"*}`
+        sampleID=`basename ${ifile%%"_tumor"*}`
         
         $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.normal.sorted.bam > $qc_dir/${sampleID}.normal.depth.txt;
         $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.normal.sorted.dedup.bam > $qc_dir/${sampleID}.normal.dedup.depth.txt;
@@ -65,10 +65,10 @@ then
         $samtools stats -@ ${thread} ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > ${qc_dir}/${sampleID}.tumor.stats.txt;
 
 
-        tumor_r1=$(du $input_folder/${sampleID}_R1.tumor.fastq.gz -sh |awk '{print $1}');
-        tumor_r2=$(du $input_folder/${sampleID}_R2.tumor.fastq.gz -sh |awk '{print $1}');
-        normal_r1=$(du $input_folder/${sampleID}_R1.normal.fastq.gz -sh |awk '{print $1}');
-        normal_r2=$(du $input_folder/${sampleID}_R2.normal.fastq.gz -sh |awk '{print $1}');
+        tumor_r1=$(du $input_folder/${sampleID}_tumor_R1.fastq.gz -sh |awk '{print $1}');
+        tumor_r2=$(du $input_folder/${sampleID}_tumor_R2.fastq.gz -sh |awk '{print $1}');
+        normal_r1=$(du $input_folder/${sampleID}_normal_R1.fastq.gz -sh |awk '{print $1}');
+        normal_r2=$(du $input_folder/${sampleID}_normal_R2.fastq.gz -sh |awk '{print $1}');
 
         normal_raw_reads=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \

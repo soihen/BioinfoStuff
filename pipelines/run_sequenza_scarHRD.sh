@@ -26,7 +26,7 @@
 
 # -------------------- set parameters ------------------- #
 sentieon_license="192.168.1.186:8990"
-thread=16
+thread=8
 
 # whether perform deduplicate step (true || false)
 dedup=true
@@ -99,15 +99,15 @@ average_insert_size,std_insert_size,\
 
 export SENTIEON_LICENSE=${sentieon_license};
 
-for ifile in $input_folder/*_R1.tumor.fastq.gz;
+for ifile in $input_folder/*_tumor_R1.fastq.gz;
 do 
-    sampleID=`basename ${ifile%%"_R1"*}`
+    sampleID=`basename ${ifile%%"_tumor"*}`
 
     # step1 - trim reads
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";
 
-    $fastp --in1 $input_folder/${sampleID}_R1.tumor.fastq.gz \
-    --in2 $input_folder/${sampleID}_R2.tumor.fastq.gz \
+    $fastp --in1 $input_folder/${sampleID}_tumor_R1.fastq.gz \
+    --in2 $input_folder/${sampleID}_tumor_R2.fastq.gz \
     --out1 $trim_dir/${sampleID}_trim_R1.tumor.fastq.gz \
     --out2 $trim_dir/${sampleID}_trim_R2.tumor.fastq.gz \
     -c --length_required 3 --detect_adapter_for_pe -p \
@@ -115,8 +115,8 @@ do
     --html $trim_dir/${sampleID}.tumor.trim.html \
     --json $trim_dir/${sampleID}.tumor.trim.json;
 
-    $fastp --in1 $input_folder/${sampleID}_R1.normal.fastq.gz \
-    --in2 $input_folder/${sampleID}_R2.normal.fastq.gz \
+    $fastp --in1 $input_folder/${sampleID}_normal_R1.fastq.gz \
+    --in2 $input_folder/${sampleID}_normal_R2.fastq.gz \
     --out1 $trim_dir/${sampleID}_trim_R1.normal.fastq.gz \
     --out2 $trim_dir/${sampleID}_trim_R2.normal.fastq.gz \
     -c --length_required 3 --detect_adapter_for_pe -p \
@@ -189,10 +189,10 @@ do
     $samtools stats -@ ${thread} ${align_dir}/${sampleID}.normal.sorted.dedup.bam > ${qc_dir}/${sampleID}.normal.stats.txt;
     $samtools stats -@ ${thread} ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > ${qc_dir}/${sampleID}.tumor.stats.txt;
 
-    tumor_r1=$(du $input_folder/${sampleID}_R1.tumor.fastq.gz -sh |awk '{print $1}');
-    tumor_r2=$(du $input_folder/${sampleID}_R2.tumor.fastq.gz -sh |awk '{print $1}');
-    normal_r1=$(du $input_folder/${sampleID}_R1.normal.fastq.gz -sh |awk '{print $1}');
-    normal_r2=$(du $input_folder/${sampleID}_R2.normal.fastq.gz -sh |awk '{print $1}');
+    tumor_r1=$(du $input_folder/${sampleID}_tumor_R1.fastq.gz -sh |awk '{print $1}');
+    tumor_r2=$(du $input_folder/${sampleID}_tumor_R2.fastq.gz -sh |awk '{print $1}');
+    normal_r1=$(du $input_folder/${sampleID}_normal_R1.fastq.gz -sh |awk '{print $1}');
+    normal_r2=$(du $input_folder/${sampleID}_normal_R2.fastq.gz -sh |awk '{print $1}');
 
     normal_raw_reads=`python3 -c "import json; \
     fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
@@ -279,10 +279,10 @@ do
     tumor_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
     tumor_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
 
-    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate::-2},${normal_insert_size}, ${normal_insert_std},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size}, ${normal_insert_std},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
     >> ${qc_dir}/QC_summary.csv
 
-    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate::-2},${tumor_insert_size}, ${tumor_insert_std},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size}, ${tumor_insert_std},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
     >> ${qc_dir}/QC_summary.csv
 
 
