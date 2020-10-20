@@ -6,10 +6,15 @@ VEP was used in advance to annotate all possibilities.
 This script will generate five novel infos in the vcf file: gene, transcript, exon, cHGVS and pHGVS.
 It will also re-write vep annotated info (i.e. ANN) to retain only one element.
 
+-----
+update:
+    2020/10/20
+    Retain NM transcript only
+
 """
 __date__ = "2020/01/07"
 __author__ = "Kai"
-__version__ = "v1.2"
+__version__ = "v1.3"
 
 
 import pysam
@@ -69,12 +74,12 @@ def parse_vep_anno(vep_records, clinic_transcript, refflat):
                         cds = "exon" + each_vep.split("|")[8].split("/")[0]
                     else:
                         cds = "intron" + each_vep.split("|")[9].split("/")[0]
-                    return (each_gene, each_vep.split("|")[6], cds, 
+                    return (each_gene, each_vep.split("|")[6], cds,
                             each_vep.split("|")[10], each_vep.split("|")[11])
         else:
             continue
     
-    if len(vep_records) == 1:
+    if len(vep_records) == 1 and vep_records[0].split("|")[6].startswith("NM"):
         if vep_records[0].split("|")[8]:
             cds = "exon" + vep_records[0].split("|")[8].split("/")[0]
         else:
@@ -84,6 +89,7 @@ def parse_vep_anno(vep_records, clinic_transcript, refflat):
 
     # get the longest transcript
     transcripts = [i.split("|")[6].split(".")[0] for i in vep_records]
+    transcripts = [i for i in transcripts if i.startswith("NM")]
     longest_transcript = determine_longest_transcript(transcripts, refflat)
     vep_record = [i for i in vep_records if longest_transcript in i][0]
     if vep_record.split("|")[8]:
@@ -118,7 +124,7 @@ def read_clinic_transcript_database(lrg):
     """
     clinic_transcript = {}
     df = pd.read_csv(lrg, sep="\t", header=None)
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         clinic_transcript[row[0]] = (row[1], row[2])
     return clinic_transcript
         
