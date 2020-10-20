@@ -22,16 +22,26 @@
 # mode of somatic calling: (matched || single)
 mode="single"
 
+# calling method (TNseq || TNscope)
+calling_method="TNscope"
+
 # whether perform deduplicate step (true || false)
 dedup=true
 
-# path to software 
+# path to software & scripts
 fastp="/data/ngs/softs/fastp/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
+samtools="/public/software/samtools-1.9/samtools"
+vep="/public/software/98vep/ensembl-vep/vep"
+bgzip="/public/software/htslib-1.9/bin/bgzip"
+tabix="/public/software/htslib-1.9/bin/tabix"
+
+merge_mnv="/public/home/kai/BioinfoStuff/tertiary_analysis/merge_mnv.py"
+anno_hgvs="/public/home/kai/BioinfoStuff/tertiary_analysis/anno_hgvs.py"
 
 sentieon_license="192.168.1.186:8990"
-thread=16
+thread=8
 
 # additional files
 # reference fasta file
@@ -40,12 +50,17 @@ dbsnp="/public/database/GATK_Resource_Bundle/hg19/dbsnp_138.hg19.vcf"
 k1="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/dbsnp_138.hg19.vcf.gz"
 k2="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.gz"
 k3="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.gz"
+refflat="/public/database/GATK_Resource_Bundle/refFlat.txt"
+vep_dir="/public/software/vep_98/"
+cache_version="98"
+clinic_transcripts="/public/home/kai/database/LRG/parsed_LRG.tsv"
+
 
 # ------------------------------------------------------- #
 
 
 if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./snv_calling_TNscope.sh [input_folder] [output_folder]"
+    echo "Usage: ./snv_calling.sh [input_folder] [output_folder]"
     echo "-------------------------------------------------------------------------"
     echo "[input_folder] should contain fastq files with following naming system:"
     echo "  single -- \${sampleID}_R[1|2].fastq.gz"
@@ -59,7 +74,7 @@ fi
 
 input_folder=$1
 output_folder=$2
-bed=$3
+bed="/public/home/kai/ovarian_cancer_study/Exon_V6_r2_Regions_XY.bed"
 
 if [[ ! -d $output_folder ]]; 
 then
@@ -76,15 +91,10 @@ if [[ ! -d $align_dir ]]; then
     mkdir $align_dir
 fi
 
-cnv_dir=$output_folder/sequenza_cnv/;
-if [[ ! -d $cnv_dir ]]; then
-    mkdir $cnv_dir
-fi
-
-hrd_dir=${output_folder}/HRD/;
-if [[  ! -d $hrd_dir  ]];
+snv_dir=${output_folder}/SNV/;
+if [[  ! -d $snv_dir  ]];
 then 
-    mkdir $hrd_dir
+    mkdir $snv_dir
 fi
 
 qc_dir=$output_folder/qc/;
@@ -271,6 +281,10 @@ if [[  $mode == 'matched' ]]; then
         tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
         tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
 
+        normal_0.1x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+        normal_0.2x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+        normal_0.5x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+        normal_1x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
 
         normal_50x=$(awk 'BEGIN {count=0} {if ($3 > 50) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
         normal_100x=$(awk 'BEGIN {count=0} {if ($3 > 100) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
@@ -280,6 +294,11 @@ if [[  $mode == 'matched' ]]; then
         normal_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
         normal_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
 
+        tumor_0.1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_0.2x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_0.5x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+
         tumor_50x=$(awk 'BEGIN {count=0} {if ($3 > 50) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
         tumor_100x=$(awk 'BEGIN {count=0} {if ($3 > 100) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
         tumor_150x=$(awk 'BEGIN {count=0} {if ($3 > 150) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
@@ -288,10 +307,10 @@ if [[  $mode == 'matched' ]]; then
         tumor_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
         tumor_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
 
-        echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size}, ${normal_insert_std},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+        echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_0.1x},${normal_0.2x},${normal_0.5x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
         >> ${qc_dir}/QC_summary.csv
 
-        echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size}, ${tumor_insert_std},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+        echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_0.1x},${tumor_0.2x},${tumor_0.5x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
         >> ${qc_dir}/QC_summary.csv
 
 
@@ -330,15 +349,15 @@ if [[  $mode == 'matched' ]]; then
 
 # tumor-only mode 
 elif [[  $mode == 'single'  ]]; then
-    for ifile in $input_folder/*_R1.fastq.gz;
+    for ifile in $input_folder/*_R1_001.fastq.gz;
     do
         sampleID=`basename ${ifile%%"_R1"*}`
 
         # step1 - trim reads
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming reads";
 
-        $fastp --in1 $input_folder/${sampleID}_R1.fastq.gz \
-        --in2 $input_folder/${sampleID}_R2.fastq.gz \
+        $fastp --in1 $input_folder/${sampleID}_R1_001.fastq.gz \
+        --in2 $input_folder/${sampleID}_R2_001.fastq.gz \
         --out1 $trim_dir/${sampleID}_trim_R1.fastq.gz \
         --out2 $trim_dir/${sampleID}_trim_R2.fastq.gz \
         -c --length_required 3 --detect_adapter_for_pe -p \
@@ -351,8 +370,8 @@ elif [[  $mode == 'single'  ]]; then
 
         ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
         -t ${thread} -K 10000000 ${ref} \
-        $input_folder/${sampleID}_R1.trimmed.fastq.gz \
-        $input_folder/${sampleID}_R2.trimmed.fastq.gz \
+        ${trim_dir}/${sampleID}_trim_R1.fastq.gz \
+        ${trim_dir}/${sampleID}_trim_R2.fastq.gz \
         || echo -n 'error' ) \
         | ${sentieon} util sort -r ${ref} -o ${align_dir}/${sampleID}.sorted.bam \
         -t ${thread} --sam2bam -i -;
@@ -427,6 +446,11 @@ elif [[  $mode == 'single'  ]]; then
         tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
         tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
 
+        tumor_0.1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_0.2x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_0.5x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+        tumor_1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+
         tumor_50x=$(awk 'BEGIN {count=0} {if ($3 > 50) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.dedup.depth.txt)
         tumor_100x=$(awk 'BEGIN {count=0} {if ($3 > 100) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.dedup.depth.txt)
         tumor_150x=$(awk 'BEGIN {count=0} {if ($3 > 150) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.dedup.depth.txt)
@@ -435,7 +459,7 @@ elif [[  $mode == 'single'  ]]; then
         tumor_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.dedup.depth.txt)
         tumor_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.dedup.depth.txt)
 
-        echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size}, ${tumor_insert_std},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+        echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_0.1x},${tumor_0.2x},${tumor_0.5x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
         >> $qc_dir/QC_summary.csv
 
         # set path of the bam file
@@ -445,6 +469,7 @@ elif [[  $mode == 'single'  ]]; then
             bam=${align_dir}/${sampleID}.sorted.bam
         fi
 
+        
         # step6 - BQSR
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- BQSR";
 
@@ -452,13 +477,84 @@ elif [[  $mode == 'single'  ]]; then
         -i ${bam} --algo QualCal -k ${k1} -k ${k2} -k ${k3} \
         ${align_dir}/${sampleID}.recal.table;
 
-        # step7 - variant calling (TNscope)
+
+        # step7 - variant calling
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- variant calling";
 
-        ${sentieon} driver -t ${thread} -r ${ref} \
-        -i ${bam} -q ${align_dir}/${sampleID}.recal.table \
-        --algo TNscope --tumor_sample ${sampleID} \
-        --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.tumor.raw.vcf;
+        if [[  $calling_method == 'TNscope' ]];
+        then
+            ${sentieon} driver -t ${thread} -r ${ref} \
+            -i ${bam} -q ${align_dir}/${sampleID}.recal.table \
+            --algo TNscope --tumor_sample ${sampleID} \
+            --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.tumor.raw.vcf;
+
+        elif [[  $calling_method == 'TNseq' ]];
+        then
+            ${sentieon} driver -t ${thread} -r ${ref} \
+            -i ${bam} \
+            -q ${align_dir}/${sampleID}.recal.table \
+            --algo TNhaplotyper2 --tumor_sample ${sampleID} \
+            --default_af 0.00000001 \
+            ${snv_dir}/${sampleID}.tumor.tmp.vcf;
+
+            ${sentieon} tnhapfilter --tumor_sample ${sampleID} \
+            -v ${snv_dir}/${sampleID}.tumor.tmp.vcf \
+            ${snv_dir}/${sampleID}.tumor.raw.vcf;
+
+            rm ${snv_dir}/${sampleID}.tumor.tmp.vcf;
+        fi
+
+        # step8 - normalise
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- normalise VCF + filter low-support";
+
+        # remove 'germline_risk' annotation
+        $bcftools annotate -x FILTER/germline_risk \
+        ${snv_dir}/${sampleID}.tumor.raw.vcf \
+        ${snv_dir}/${sampleID}.step1_deanno.vcf;
+
+        # remove SV
+        grep -v "SVTYPE=BND" ${snv_dir}/${sampleID}.step1_deanno.vcf \
+        >  ${snv_dir}/${sampleID}.step2_snv.vcf;
+
+        # split multiallelic sites + left-alignment
+        $bcftools norm -m -both -f ${ref} \
+        ${snv_dir}/${sampleID}.step2_snv.vcf \
+        -o ${snv_dir}/${sampleID}.step3_norm.vcf;
+
+        # bgzip and make index file
+        $bgzip ${snv_dir}/${sampleID}.step3_norm.vcf;
+        $tabix -p vcf ${snv_dir}/${sampleID}.step3_norm.vcf.gz;
+
+        # filter off-target variants
+        $bcftools view -R $bed \
+        ${snv_dir}/${sampleID}.step3_norm.vcf.gz \
+        > ${snv_dir}/${sampleID}.step4_on_target.vcf;
+
+        # filter low-support variants
+        grep "#\|PASS" ${snv_dir}/${sampleID}.step4_on_target.vcf > \
+        ${snv_dir}/${sampleID}.step5_filter.vcf
+
+        $bcftools filter -i "(FORMAT/AD[0:0]+AD[0:1]) >= ${minimal_depth}" \
+        ${snv_dir}/${sampleID}.step5_filter.vcf > \
+        ${snv_dir}/${sampleID}.step6_filter.vcf;
+
+        # merge MNVs
+        python3 $merge_mnv ${snv_dir}/${sampleID}.step6_filter.vcf ${ref} \
+        -o $snv_dir/${sampleID}.step7_MNV_merged.vcf;
+
+        # step9 - annotation
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- Annotation";
+
+        $vep --dir ${vep_dir} --cache --offline --cache_version ${cache_version} \
+        --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
+        --gene_phenotype --use_given_ref --refseq \
+        --hgvs --hgvsg --transcript_version \
+        --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
+        -o ${snv_dir}/${sampleID}.step8_anno.vcf;
+
+        # keep only one transcript
+        python3 $anno_hgvs ${snv_dir}/${sampleID}.step8_anno.vcf ${clinic_transcripts} \
+        $refflat -o ${snv_dir}/${sampleID}.step9_anno.vcf;
 
     done
 
