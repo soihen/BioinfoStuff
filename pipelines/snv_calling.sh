@@ -6,7 +6,11 @@
 #   Alignment (Sentieon-bwa) +                                                          #
 #   statistic analysis +                                                                #
 #   Deduplication (optional) +                                                          #
-#   Variant Calling                                                                     #
+#   Variant Calling +                                                                   #
+#   Normalisation +                                                                     #
+#   Remove low-quality variants +                                                       #
+#   VEP annotation / remove common SNPs (MAF >= 1%) +                                   #
+#   VIC annotation                                                                      #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
 #   [admin@kai]$bash snv_calling.sh [input_folder] [output_folder]                      #
@@ -36,6 +40,8 @@ samtools="/public/software/samtools-1.9/samtools"
 vep="/public/software/98vep/ensembl-vep/vep"
 bgzip="/public/software/htslib-1.9/bin/bgzip"
 tabix="/public/software/htslib-1.9/bin/tabix"
+VIC="/public/software/VIC"
+annovar="/public/software/annovar/"
 
 merge_mnv="/public/home/kai/BioinfoStuff/tertiary_analysis/merge_mnv.py"
 anno_hgvs="/public/home/kai/BioinfoStuff/tertiary_analysis/anno_hgvs.py"
@@ -76,6 +82,7 @@ fi
 input_folder=$1
 output_folder=$2
 bed=$3
+cancer_type=$4
 
 
 if [[ ! -d $input_folder  ]];
@@ -562,7 +569,7 @@ elif [[  $mode == 'single'  ]]; then
         -o $snv_dir/${sampleID}.step7_MNV_merged.vcf;
 
         # step9 - annotation
-        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- Annotation";
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VEP Annotation";
 
         $vep --dir ${vep_dir} --cache --offline --cache_version ${cache_version} \
         --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
@@ -576,9 +583,22 @@ elif [[  $mode == 'single'  ]]; then
         $refflat -o ${snv_dir}/${sampleID}.step9_anno.vcf;
 
         # remove variants with MAF>=0.01
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- remove common SNPs";
+
         python3 $rm_common_variant ${snv_dir}/${sampleID}.step9_anno.vcf > \
         ${snv_dir}/${sampleID}.step10_somatic.vcf;
 
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VIC Annotation";
+        
+        java -jar ${VIC}/target/VIC-1.0-jar-with-dependencies.jar -cancer_type ${cancer_type} \
+        -b hg19 -db ${VIC}/vicdb/ -cosmic cosmic70 -clinvar clinvar_20191202 \
+        -gnomad gnomad211_exome -dbnsfp dbnsfp35a \
+        -d ${annovar}/humandb/ -table_annovar ${annovar}/table_annovar.pl \
+        -convert2annovar ${annovar}/convert2annovar.pl \
+        -annotate_variation ${annovar}/annotate_variation.pl \
+        -input_type VCF -i ${snv_dir}/${sampleID}.step10_somatic.vcf \
+        -o ${snv_dir}/${sampleID}.step11_classified
+        
     done
 
 fi
