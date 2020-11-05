@@ -9,7 +9,8 @@
 #   Variant Calling +                                                                   #
 #   Normalisation +                                                                     #
 #   Remove low-quality variants +                                                       #
-#   VEP annotation / remove common SNPs (MAF >= 1%) +                                   #
+#   VEP annotation +                                                                    #
+#   Remove potential germline mutation +                                                #
 #   VIC annotation                                                                      #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
@@ -19,6 +20,13 @@
 #    ('match') of somatic calling of TNscope.                                           #
 # 2. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture     #
 #    based), user can choose to either perform or not perform deduplication step.       #
+# 3. Germline mutation removal is followed by:                                          #
+#    Sukhai MA, Misyura M, Thomas M, Garg S, Zhang T, Stickle N, Virtanen C, Bedard PL, #
+#    Siu LL, Smets T, Thijs G, Van Vooren S, Kamel-Reid S, Stockley TL.                 #
+#    Somatic Tumor Variant Filtration Strategies to Optimize Tumor-Only Molecular       #
+#    Profiling Using Targeted Next-Generation Sequencing Panels.                        #
+#    J Mol Diagn. 2019 Mar;21(2):261-273. doi: 10.1016/j.jmoldx.2018.09.008.            #
+#    Epub 2018 Dec 19. PMID: 30576869.                                                  #
 # ------------------------------------------------------------------------------------- #
 
 
@@ -126,6 +134,15 @@ if [[ ! -d $qc_dir ]]; then
 fi
 
 # -------------------------------
+
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
+echo "========================================================"
+echo "LOGGING: -- settings -- input folder -- ${input_folder}"
+echo "LOGGING: -- settings -- output folder -- ${output_folder}"
+echo "LOGGING: -- settings -- BED file -- ${bed}"
+echo "LOGGING: -- settings -- cancer type -- ${cancer_type}"
+echo "========================================================"
+
 
 echo "sampleID,fastq_size,raw_reads,raw_bases,clean_reads,clean_bases,\
 qc30_rate,mapping_rate(%),on-target_percent(%),\
@@ -371,6 +388,54 @@ if [[  $mode == 'matched' ]]; then
         --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
         --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.raw.vcf
         
+
+        # step7 - normalisation + remove low quality variants
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- normalise VCF + filter low-support";
+        
+        # remove SV
+        grep -v "SVTYPE=BND" ${snv_dir}/${sampleID}.raw.vcf \
+        >  ${snv_dir}/${sampleID}.step1_snv.vcf;
+
+        # split multiallelic sites + left-alignment
+        $bcftools norm -m -both -f ${ref} \
+        ${snv_dir}/${sampleID}.step1_snv.vcf \
+        -o ${snv_dir}/${sampleID}.step2_norm.vcf;
+
+        # bgzip and make index file
+        $bgzip ${snv_dir}/${sampleID}.step2_norm.vcf;
+        $tabix -p vcf ${snv_dir}/${sampleID}.step2_norm.vcf.gz;
+
+        # filter off-target variants
+        $bcftools view -R $bed \
+        ${snv_dir}/${sampleID}.step2_norm.vcf.gz \
+        > ${snv_dir}/${sampleID}.step3_on_target.vcf;
+
+        # filter low-support variants
+        grep "#\|PASS" ${snv_dir}/${sampleID}.step3_on_target.vcf > \
+        ${snv_dir}/${sampleID}.step4_filter.vcf
+
+        $bcftools filter -i "(FORMAT/AF[0]) >= 0.05" \
+        ${snv_dir}/${sampleID}.step4_filter.vcf > \
+        ${snv_dir}/${sampleID}.step5_filter.vcf;
+
+        $bcftools filter -i "(FORMAT/AD[0:0]+AD[0:1]) >= 250" \
+        ${snv_dir}/${sampleID}.step5_filter.vcf > \
+        ${snv_dir}/${sampleID}.step6_filter.vcf; 
+
+        # merge MNV
+        python3 $merge_mnv ${snv_dir}/${sampleID}.step6_filter.vcf ${ref} \
+        -o $snv_dir/${sampleID}.step7_MNV_merged.vcf;
+
+        # step8 - annotation
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VEP Annotation";
+
+        $vep --dir ${vep_dir} --cache --offline --cache_version ${cache_version} \
+        --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
+        --gene_phenotype --use_given_ref --refseq --check_existing \
+        --hgvs --hgvsg --transcript_version --max_af \
+        --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
+        -o ${snv_dir}/${sampleID}.step8_anno.vcf;
+
     done
 
 # tumor-only mode 
@@ -564,6 +629,10 @@ elif [[  $mode == 'single'  ]]; then
         ${snv_dir}/${sampleID}.step5_filter.vcf > \
         ${snv_dir}/${sampleID}.step6_filter.vcf;
 
+        $bcftools filter -i "(FORMAT/AD[0:0]+AD[0:1]) >= 250" \
+        ${snv_dir}/${sampleID}.step6_filter.vcf > \
+        ${snv_dir}/${sampleID}.step7_filter.vcf; 
+
         # merge MNVs
         python3 $merge_mnv ${snv_dir}/${sampleID}.step6_filter.vcf ${ref} \
         -o $snv_dir/${sampleID}.step7_MNV_merged.vcf;
@@ -573,16 +642,14 @@ elif [[  $mode == 'single'  ]]; then
 
         $vep --dir ${vep_dir} --cache --offline --cache_version ${cache_version} \
         --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
-        --gene_phenotype --use_given_ref --refseq \
+        --gene_phenotype --use_given_ref --refseq --check_existing \
         --hgvs --hgvsg --transcript_version --max_af \
         --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
         -o ${snv_dir}/${sampleID}.step8_anno.vcf;
 
-        # keep only one transcript
-        python3 $anno_hgvs ${snv_dir}/${sampleID}.step8_anno.vcf ${clinic_transcripts} \
-        $refflat -o ${snv_dir}/${sampleID}.step9_anno.vcf;
-
-        # remove variants with MAF>=0.01
+        # step 10 - remove potential germline variants
+        # 1) MAF >= 0.2% in 1000g, ESP, ExAC
+        # 2) benign or likely_benign in ClinVar
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- remove common SNPs";
 
         python3 $rm_common_variant ${snv_dir}/${sampleID}.step9_anno.vcf > \
