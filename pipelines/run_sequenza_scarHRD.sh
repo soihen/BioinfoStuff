@@ -36,10 +36,6 @@ fastp="/data/ngs/softs/fastp/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
 samtools="/public/software/samtools-1.9/samtools"
-bedtools="/public/software/bedtools2/bin/bedtools"
-
-# additional files
-# reference fasta file
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
@@ -86,6 +82,12 @@ if [[ ! -d $qc_dir ]]; then
 fi
 
 # -------------------------------
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
+echo "========================================================"
+echo "LOGGING: -- settings -- input folder -- ${input_folder}"
+echo "LOGGING: -- settings -- output folder -- ${output_folder}"
+echo "LOGGING: -- settings -- BED file -- ${bed}"
+echo "========================================================"
 
 echo "sampleID,fastq_size,raw_reads,raw_bases,clean_reads,clean_bases,\
 qc30_rate,mapping_rate(%),on-target_percent(%),\
@@ -279,10 +281,20 @@ do
     tumor_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
     tumor_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
 
-    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size}, ${normal_insert_std},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+    normal_01x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+    normal_02x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+    normal_05x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+    normal_1x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+
+    tumor_01x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+    tumor_02x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+    tumor_05x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+    tumor_1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+
+    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
     >> ${qc_dir}/QC_summary.csv
 
-    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size}, ${tumor_insert_std},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
     >> ${qc_dir}/QC_summary.csv
 
 
@@ -349,5 +361,7 @@ do
                 seqz = 'FALSE'); \
     write.csv(hrd, row.names = '${sampleID}', file = '$hrd_dir/${sampleID}.hrd.csv')"
 done
+
+cat $hrd_dir/*csv | awk 'NR==1 || !/(HRD-sum)/' > $hrd_dir/HRD_results.csv
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";
