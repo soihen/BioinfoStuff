@@ -36,6 +36,8 @@ fastp="/data/ngs/softs/fastp/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
 samtools="/public/software/samtools-1.9/samtools"
+bamdst="/public/software/bamdst/bamdst"
+
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
@@ -158,7 +160,7 @@ do
 
         ${sentieon} driver -t ${thread} \
         -i ${align_dir}/${sampleID}.tumor.sorted.bam \
-        --algo Dedup --rmdup \
+        --algo Dedup \
         --score_info ${align_dir}/${sampleID}.tumor.score.txt \
         --metrics ${align_dir}/${sampleID}.tumor.dedup_metrics.txt \
         ${align_dir}/${sampleID}.tumor.sorted.dedup.bam;
@@ -170,7 +172,7 @@ do
 
         ${sentieon} driver -t ${thread} \
         -i ${align_dir}/${sampleID}.normal.sorted.bam \
-        --algo Dedup --rmdup \
+        --algo Dedup \
         --score_info ${align_dir}/${sampleID}.normal.score.txt \
         --metrics ${align_dir}/${sampleID}.normal.dedup_metrics.txt \
         ${align_dir}/${sampleID}.normal.sorted.dedup.bam;
@@ -180,13 +182,19 @@ do
     # step4 - quality control
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- qc";
 
-    $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.normal.sorted.bam > $qc_dir/${sampleID}.normal.depth.txt;
-    $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.normal.sorted.dedup.bam > $qc_dir/${sampleID}.normal.dedup.depth.txt;
-    $samtools depth -d 0 ${align_dir}/${sampleID}.normal.sorted.dedup.bam > $qc_dir/${sampleID}.normal.dedup.total_depth.txt;
+    if [[ ! -d $qc_dir/${sampleID}.normal ]]; then
+        mkdir $qc_dir/${sampleID}.normal
+    fi
 
-    $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.tumor.sorted.bam > $qc_dir/${sampleID}.tumor.depth.txt;
-    $samtools depth -d 0 -b ${bed} ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > $qc_dir/${sampleID}.tumor.dedup.depth.txt;
-    $samtools depth -d 0 ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > $qc_dir/${sampleID}.tumor.dedup.total_depth.txt;
+    if [[ ! -d $qc_dir/${sampleID}.tumor ]]; then
+        mkdir $qc_dir/${sampleID}.tumor
+    fi
+
+    $bamdst -p $bed -o $qc_dir/${sampleID}.normal \
+    ${align_dir}/${sampleID}.normal.sorted.dedup.bam;
+
+    $bamdst -p $bed -o $qc_dir/${sampleID}.tumor \
+    ${align_dir}/${sampleID}.tumor.sorted.dedup.bam;
 
     $samtools stats -@ ${thread} ${align_dir}/${sampleID}.normal.sorted.dedup.bam > ${qc_dir}/${sampleID}.normal.stats.txt;
     $samtools stats -@ ${thread} ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > ${qc_dir}/${sampleID}.tumor.stats.txt;
@@ -236,60 +244,51 @@ do
     fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
     print(fh['summary']['after_filtering']['q30_rate'])"`
 
-    normal_mapped_reads=$(awk -F"\t" '$2 == "reads mapped:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
-    normal_all_reads=$(awk -F"\t" '$2 == "sequences:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
-    normal_mapping_rate=`bc <<< "scale=4; ${normal_mapped_reads} / ${normal_all_reads} * 100"`
+    normal_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.normal/coverage.report | awk -F"\t" '{print $2}');
+    tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.tumor/coverage.report | awk -F"\t" '{print $2}');
 
-    tumor_mapped_reads=$(awk -F"\t" '$2 == "reads mapped:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
-    tumor_all_reads=$(awk -F"\t" '$2 == "sequences:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
-    tumor_mapping_rate=`bc <<< "scale=4; ${tumor_mapped_reads} / ${tumor_all_reads} * 100"`
-
-    normal_mean_depth=$(awk '{sum+=$3}END{print sum/NR}' $qc_dir/${sampleID}.normal.depth.txt)
-    normal_mean_dedup_depth=$(awk '{sum+=$3}END{print sum/NR}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_dup_rate=`bc <<< "scale=4; (1 - ${normal_mean_dedup_depth} / ${normal_mean_depth}) * 100"`
+    normal_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}.normal/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    normal_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}.normal/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    normal_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}.normal/coverage.report |awk -F"\t" '{print $2}');
     
-    tumor_mean_depth=$(awk '{sum+=$3}END{print sum/NR}' $qc_dir/${sampleID}.tumor.depth.txt)
-    tumor_mean_dedup_depth=$(awk '{sum+=$3}END{print sum/NR}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_dup_rate=`bc <<< "scale=4; (1 - ${tumor_mean_dedup_depth} / ${tumor_mean_depth}) * 100"`
+    tumor_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}.tumor/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    tumor_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}.tumor/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    tumor_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}.tumor/coverage.report |awk -F"\t" '{print $2}');
 
-    normal_total_depth=$(awk '{sum+=$3}END{print sum}' $qc_dir/${sampleID}.normal.dedup.total_depth.txt)
-    normal_on_target=$(awk -v all_bases=${normal_total_depth} '{sum+=$3}END{print sum/all_bases*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-
-    tumor_total_depth=$(awk '{sum+=$3}END{print sum}' $qc_dir/${sampleID}.tumor.dedup.total_depth.txt)
-    tumor_on_target=$(awk -v all_bases=${tumor_total_depth} '{sum+=$3}END{print sum/all_bases*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+    normal_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}.normal/coverage.report |awk -F"\t" '{print $2}');
+    tumor_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}.tumor/coverage.report |awk -F"\t" '{print $2}');
 
     normal_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
     normal_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
 
     tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
     tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
+    
+    normal_50x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
+    normal_100x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
+    normal_150x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
+    normal_200x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
+    normal_300x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
+    normal_400x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
+    normal_500x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
 
+    tumor_50x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
+    tumor_100x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
+    tumor_150x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
+    tumor_200x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
+    tumor_300x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
+    tumor_400x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
+    tumor_500x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
 
-    normal_50x=$(awk 'BEGIN {count=0} {if ($3 > 50) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_100x=$(awk 'BEGIN {count=0} {if ($3 > 100) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_150x=$(awk 'BEGIN {count=0} {if ($3 > 150) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_200x=$(awk 'BEGIN {count=0} {if ($3 > 200) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_300x=$(awk 'BEGIN {count=0} {if ($3 > 300) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
+    normal_01x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
+    normal_02x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
+    normal_05x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
+    normal_1x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
-    tumor_50x=$(awk 'BEGIN {count=0} {if ($3 > 50) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_100x=$(awk 'BEGIN {count=0} {if ($3 > 100) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_150x=$(awk 'BEGIN {count=0} {if ($3 > 150) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_200x=$(awk 'BEGIN {count=0} {if ($3 > 200) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_300x=$(awk 'BEGIN {count=0} {if ($3 > 300) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_400x=$(awk 'BEGIN {count=0} {if ($3 > 400) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_500x=$(awk 'BEGIN {count=0} {if ($3 > 500) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-
-    normal_01x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_02x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_05x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-    normal_1x=$(awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.normal.dedup.depth.txt)
-
-    tumor_01x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.1) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_02x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.2) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_05x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth*0.5) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
-    tumor_1x=$(awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($3 > depth) count+=1} END {print count/NR*100}' $qc_dir/${sampleID}.tumor.dedup.depth.txt)
+    tumor_01x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
+    tumor_02x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
+    tumor_05x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
+    tumor_1x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
     echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
     >> ${qc_dir}/QC_summary.csv
