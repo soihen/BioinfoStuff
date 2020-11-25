@@ -11,7 +11,7 @@
 #    7) Mean depth & Mean deduplicated depth                                            #
 #    8) Duplicate rate                                                                  #
 #    9) Insert size / standard deviation                                                #
-#    10) Uniformality rate (> 0.1x; 0.2x; 0.5x; 1x; > 100x; 200x; 500x)                #
+#    10) Uniformality rate (> 0.1x; 0.2x; 0.5x; 1x; > 100x; 200x; 500x)                 #
 # ------------------------------------------------------------------------------------- #
 
 
@@ -27,7 +27,7 @@ fi
 
 
 # -------------------- set parameters ------------------- #
-mode="matched" # matched || single
+mode="single" # matched || single
 thread=8
 
 samtools="/public/software/samtools-1.9/samtools"
@@ -114,10 +114,10 @@ then
         $bamdst -p $bed -o $qc_dir/${sampleID}.tumor \
         ${align_dir}/${sampleID}.tumor.sorted.dedup.bam;
 
-        tumor_r1=$(du $input_folder/${sampleID}_tumor_R1.fastq.gz -sh |awk '{print $1}');
-        tumor_r2=$(du $input_folder/${sampleID}_tumor_R2.fastq.gz -sh |awk '{print $1}');
-        normal_r1=$(du $input_folder/${sampleID}_normal_R1.fastq.gz -sh |awk '{print $1}');
-        normal_r2=$(du $input_folder/${sampleID}_normal_R2.fastq.gz -sh |awk '{print $1}');
+        tumor_r1=$(du $input_folder/${sampleID}_tumor_R1.fastq.gz -shL |awk '{print $1}');
+        tumor_r2=$(du $input_folder/${sampleID}_tumor_R2.fastq.gz -shL |awk '{print $1}');
+        normal_r1=$(du $input_folder/${sampleID}_normal_R1.fastq.gz -shL |awk '{print $1}');
+        normal_r2=$(du $input_folder/${sampleID}_normal_R2.fastq.gz -shL |awk '{print $1}');
 
         normal_raw_reads=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
