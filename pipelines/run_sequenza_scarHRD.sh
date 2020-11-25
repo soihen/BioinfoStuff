@@ -9,13 +9,13 @@
 #   Allelic specific CNV calling (Sequencza)                                            #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash run_sequenza.sh [input_folder] [output_folder]                     #
+#   [admin@kai]$bash run_sequenza.sh [input_folder] [output_folder] [BED]               #
 #                                                                                       #
 # input_folder should contain pairs of matched tumor/normal pair-end sequenced Fastqs   #
 #                                                                                       #
 # Naming convention:                                                                    #
-# tumor:   ${sampleID}_R[1|2].tumor.fastq.gz                                            #
-# normal:  ${sampleID}_R[1|2].normal.fastq.gz                                           #
+# tumor:   ${sampleID}_tumor_R[1|2].fastq.gz                                            #
+# normal:  ${sampleID}_normal_R[1|2].fastq.gz                                           #
 #                                                                                       #
 # 1. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture     #
 #    based), user can choose to either perform or not perform deduplication step.       #
@@ -95,6 +95,8 @@ echo "sampleID,fastq_size,raw_reads,raw_bases,clean_reads,clean_bases,\
 qc30_rate,mapping_rate(%),on-target_percent(%),\
 mean_depth,mean_dedup_depth,dup_rate(%),\
 average_insert_size,std_insert_size,\
+Uniformity_0.1X(%),Uniformity_0.2X(%),\
+Uniformity_0.5X(%),Uniformity_1X(%),\
 50x_depth_percent(%),100x_depth_percent(%),\
 150x_depth_percent(%),200x_depth_percent(%),\
 300x_depth_percent(%),400x_depth_percent(%),\
@@ -132,7 +134,7 @@ do
     # step2 - align & sort
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
 
-    ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
+    ($sentieon bwa mem -M -R "@RG\tID:${sampleID}.tumor\tSM:${sampleID}.tumor\tPL:illumina" \
     -t ${thread} -K 10000000 ${ref} \
     $trim_dir/${sampleID}_trim_R1.tumor.fastq.gz \
     $trim_dir/${sampleID}_trim_R2.tumor.fastq.gz \
@@ -140,7 +142,7 @@ do
     | ${sentieon} util sort -r ${ref} -o ${align_dir}/${sampleID}.tumor.sorted.bam \
     -t ${thread} --sam2bam -i -;
 
-    ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
+    ($sentieon bwa mem -M -R "@RG\tID:${sampleID}.normal\tSM:${sampleID}.normal\tPL:illumina" \
     -t ${thread} -K 10000000 ${ref} \
     $trim_dir/${sampleID}_trim_R1.normal.fastq.gz \
     $trim_dir/${sampleID}_trim_R2.normal.fastq.gz \
