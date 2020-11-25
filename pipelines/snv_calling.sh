@@ -14,7 +14,7 @@
 #   VIC annotation                                                                      #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash snv_calling.sh [input_folder] [output_folder]                      #
+#   [admin@kai]$bash snv_calling.sh [input_folder] [output_folder] [BED]                #
 #                                                                                       #
 # 1. You MUST specifiy whether use tumor-only mode ('single') or tumor/normal mode      #
 #    ('match') of somatic calling of TNscope.                                           #
@@ -653,8 +653,8 @@ elif [[  $mode == 'single'  ]]; then
         # 2) benign or likely_benign in ClinVar
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- remove common SNPs";
 
-        python3 $rm_common_variant ${snv_dir}/${sampleID}.step9_anno.vcf > \
-        ${snv_dir}/${sampleID}.step10_somatic.vcf;
+        python3 $rm_common_variant ${snv_dir}/${sampleID}.step8_anno.vcf > \
+        ${snv_dir}/${sampleID}.step9_somatic.vcf;
 
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VIC Annotation";
         
@@ -665,7 +665,7 @@ elif [[  $mode == 'single'  ]]; then
         -convert2annovar ${annovar}/convert2annovar.pl \
         -annotate_variation ${annovar}/annotate_variation.pl \
         -input_type VCF -i ${snv_dir}/${sampleID}.step10_somatic.vcf \
-        -o ${snv_dir}/${sampleID}.step11_classified
+        -o ${snv_dir}/${sampleID}.step10_classified
         
     done
 
