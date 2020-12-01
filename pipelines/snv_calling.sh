@@ -38,7 +38,7 @@ mode="single"
 calling_method="TNscope"
 
 # whether perform deduplicate step (true || false)
-dedup=true
+dedup=false
 
 # path to software & scripts
 fastp="/data/ngs/softs/fastp/fastp"
@@ -435,6 +435,20 @@ if [[  $mode == 'matched' ]]; then
         --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
         -o ${snv_dir}/${sampleID}.step8_anno.vcf;
 
+        python3 $anno_hgvs ${snv_dir}/${sampleID}.step8_anno.vcf \
+        $clinic_transcripts $refflat -o $snv_dir/$sampleID.step9_anno.vcf;
+
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VIC Annotation";
+        
+        java -jar ${VIC}/target/VIC-1.0-jar-with-dependencies.jar -cancer_type ${cancer_type} \
+        -b hg19 -db ${VIC}/vicdb/ -cosmic cosmic70 -clinvar clinvar_20191202 \
+        -gnomad gnomad211_exome -dbnsfp dbnsfp35a \
+        -d ${annovar}/humandb/ -table_annovar ${annovar}/table_annovar.pl \
+        -convert2annovar ${annovar}/convert2annovar.pl \
+        -annotate_variation ${annovar}/annotate_variation.pl \
+        -input_type VCF -i ${snv_dir}/${sampleID}.step9_anno.vcf \
+        -o ${snv_dir}/${sampleID}.step10_classified
+
     done
 
 # tumor-only mode 
@@ -503,8 +517,8 @@ elif [[  $mode == 'single'  ]]; then
 
         $samtools stats -@ ${thread} ${align_dir}/${sampleID}.sorted.dedup.bam > ${qc_dir}/${sampleID}.stats.txt;
 
-        tumor_r1=$(du $input_folder/${sampleID}_R1.fastq.gz -sh |awk '{print $1}');
-        tumor_r2=$(du $input_folder/${sampleID}_R2.fastq.gz -sh |awk '{print $1}');
+        tumor_r1=$(du $input_folder/${sampleID}_R1.fastq.gz -shL |awk '{print $1}');
+        tumor_r2=$(du $input_folder/${sampleID}_R2.fastq.gz -shL |awk '{print $1}');
 
         tumor_raw_reads=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
@@ -648,13 +662,16 @@ elif [[  $mode == 'single'  ]]; then
         --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
         -o ${snv_dir}/${sampleID}.step8_anno.vcf;
 
+        python3 $anno_hgvs ${snv_dir}/${sampleID}.step8_anno.vcf \
+        $clinic_transcripts $refflat -o $snv_dir/$sampleID.step9_anno.vcf;
+
         # step 10 - remove potential germline variants
         # 1) MAF >= 0.2% in 1000g, ESP, ExAC
         # 2) benign or likely_benign in ClinVar
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- remove common SNPs";
 
-        python3 $rm_common_variant ${snv_dir}/${sampleID}.step8_anno.vcf > \
-        ${snv_dir}/${sampleID}.step9_somatic.vcf;
+        python3 $rm_common_variant ${snv_dir}/${sampleID}.step9_anno.vcf > \
+        ${snv_dir}/${sampleID}.step10_somatic.vcf;
 
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VIC Annotation";
         
