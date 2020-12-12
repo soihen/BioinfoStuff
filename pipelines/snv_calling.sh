@@ -30,7 +30,9 @@
 # ------------------------------------------------------------------------------------- #
 
 
-# -------------------- set parameters ------------------- #
+# --------------------------- set parameters --------------------------- #
+# ---------------------------------------------------------------------- #
+
 # mode of somatic calling: (matched || single)
 mode="single"
 
@@ -72,8 +74,24 @@ cache_version="98"
 clinic_transcripts="/public/home/kai/database/LRG/parsed_LRG.tsv"
 
 
-# ------------------------------------------------------- #
+# ------------------------------ argparser ----------------------------- #
+# ---------------------------------------------------------------------- #
+input_folder=$1
+output_folder=$2
+bed=$3
+cancer_type=$4
 
+if [[ ! -d $input_folder  ]];
+then
+    echo "Error: input_folder does not Found!"
+    exit 1
+fi
+
+if [[ ! -f $bed  ]];
+then
+    echo "Error: BED file does not Found!"
+    exit 1
+fi
 
 if [[  $1 == '-h'  ]]; then
     echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED]"
@@ -85,29 +103,8 @@ if [[  $1 == '-h'  ]]; then
 fi
 
 
-# -------------------------------
-# create output directory
-
-input_folder=$1
-output_folder=$2
-bed=$3
-cancer_type=$4
-
-
-if [[ ! -d $input_folder  ]];
-then
-    echo "Error: input_folder does not Found!"
-    exit 1
-fi
-
-
-if [[ ! -f $bed  ]];
-then
-    echo "Error: BED file does not Found!"
-    exit 1
-fi
-
-
+# ----------------------  orgnise output dir  -------------------------- #
+# ---------------------------------------------------------------------- #
 if [[ ! -d $output_folder ]]; 
 then
     mkdir $output_folder
@@ -134,8 +131,8 @@ if [[ ! -d $qc_dir ]]; then
     mkdir $qc_dir
 fi
 
-# -------------------------------
-
+# ---------------------------  LOGGING  -------------------------------- #
+# ---------------------------------------------------------------------- #
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
@@ -158,10 +155,12 @@ Uniformity_0.5X(%),Uniformity_1X(%),\
 > $qc_dir/QC_summary.csv
 
 
+# ---------------------------------------------------------------------- #
+# ---------------------------  Pipeline  ------------------------------- #
+# ---------------------------------------------------------------------- #
+
 export SENTIEON_LICENSE=${sentieon_license};
 
-
-# tumor-normal matched mode
 if [[  $mode == 'matched' ]]; then
     for ifile in $input_folder/*_normal_R1.fastq.gz;
     do 
@@ -349,12 +348,17 @@ if [[  $mode == 'matched' ]]; then
         tumor_05x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
         tumor_1x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
-        echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+        echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},\
+        ${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},\
+        ${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},\
+        ${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
         >> ${qc_dir}/QC_summary.csv
 
-        echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+        echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},\
+        ${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},\
+        ${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},\
+        ${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
         >> ${qc_dir}/QC_summary.csv
-
 
         # step5 - Base quality score recalibration 
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- BQSR";
@@ -387,7 +391,6 @@ if [[  $mode == 'matched' ]]; then
         --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
         --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.raw.vcf
         
-
         # step7 - normalisation + remove low quality variants
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- normalise VCF + filter low-support";
         
@@ -447,11 +450,9 @@ if [[  $mode == 'matched' ]]; then
         -convert2annovar ${annovar}/convert2annovar.pl \
         -annotate_variation ${annovar}/annotate_variation.pl \
         -input_type VCF -i ${snv_dir}/${sampleID}.step9_anno.vcf \
-        -o ${snv_dir}/${sampleID}.step10_classified
-
+        -o ${snv_dir}/${sampleID}.step10_classified;
     done
 
-# tumor-only mode 
 elif [[  $mode == 'single'  ]]; then
     for ifile in $input_folder/*_R1.fastq.gz;
     do
@@ -564,8 +565,10 @@ elif [[  $mode == 'single'  ]]; then
         tumor_05x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
         tumor_1x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
-
-        echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+        echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},\
+        ${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},\
+        ${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},\
+        ${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
         >> $qc_dir/QC_summary.csv
 
         # set path of the bam file
@@ -574,7 +577,6 @@ elif [[  $mode == 'single'  ]]; then
         else
             bam=${align_dir}/${sampleID}.sorted.bam
         fi
-
         
         # step6 - BQSR
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- BQSR";
@@ -582,7 +584,6 @@ elif [[  $mode == 'single'  ]]; then
         ${sentieon} driver -t ${thread} -r ${ref} \
         -i ${bam} --algo QualCal -k ${k1} -k ${k2} -k ${k3} \
         ${align_dir}/${sampleID}.recal.table;
-
 
         # step7 - variant calling
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- variant calling";
@@ -682,10 +683,8 @@ elif [[  $mode == 'single'  ]]; then
         -convert2annovar ${annovar}/convert2annovar.pl \
         -annotate_variation ${annovar}/annotate_variation.pl \
         -input_type VCF -i ${snv_dir}/${sampleID}.step10_somatic.vcf \
-        -o ${snv_dir}/${sampleID}.step10_classified
-        
+        -o ${snv_dir}/${sampleID}.step10_classified;
     done
-
 fi
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";
