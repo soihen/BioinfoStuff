@@ -29,8 +29,6 @@
 #    genomic coordinate.                                                                #
 # ------------------------------------------------------------------------------------- #
 
-input_folder=$1
-output_folder=$2
 
 # -------------------- set parameters ------------------- #
 sentieon_license="192.168.1.186:8990"
@@ -51,6 +49,25 @@ k3="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_g
 # dbSNP database
 dbsnp="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/dbsnp_138.hg19.vcf.gz"
 # ------------------------------------------------------- #
+
+
+input_folder=$1
+output_folder=$2
+bed=$3
+
+
+if [[ ! -d $input_folder  ]];
+then
+    echo "Error: input_folder does not Found!"
+    exit 1
+fi
+
+
+if [[ ! -f $bed  ]];
+then
+    echo "Error: BED file does not Found!"
+    exit 1
+fi
 
 
 if [[ ! -d $output_folder ]]; 
