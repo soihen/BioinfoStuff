@@ -8,6 +8,7 @@
 #   Alignment (bwa) +                                                                   #
 #   statistic analysis +                                                                #
 #   Deduplication (optional) +                                                          #
+#   Quality Control +                                                                   #
 #   Indel-rearrangement +                                                               #
 #   BQSR +                                                                              #
 #   SNP/INDEL calling (Haplotyper)  +                                                   #
@@ -15,7 +16,7 @@
 #   Filter based on depth coverage (bcftools)                                           #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash snp_sentieon.sh [input_folder] [output_folder]                     #
+#   [admin@kai]$bash snp_sentieon.sh [input_folder] [output_folder] [BED_file]          #
 #                                                                                       #
 # input_folder should contain pair-end sequenced Fastq files.                           #
 # Each sample is expected to have two Fastq files, with naming convention of:           #
@@ -23,10 +24,6 @@
 # ------------------------------------------------------------------------------------- #
 # 1. Depends on DNA capture methods (i.e. targeted amplicon based or hybrid capture     #
 #    based), user can choose to either perform or not perform deduplication step.       #
-# 2. BED file is also NOT used by default,                                              #
-#    as BED file will only specify regions of variant calling.                          #
-#    This aim can be achieve equally by filtering obtained VCF file based on            #
-#    genomic coordinate.                                                                #
 # ------------------------------------------------------------------------------------- #
 
 
@@ -35,10 +32,16 @@ sentieon_license="192.168.1.186:8990"
 thread=16
 # whether perform deduplicate step (true || false)
 dedup=true
+
 # path to software 
 fastp="/data/ngs/softs/fastp/fastp"
 sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
+bgzip="/public/software/htslib-1.9/bin/bgzip"
+tabix="/public/software/htslib-1.9/bin/tabix"
+vep="/public/software/98vep/ensembl-vep/vep"
+bamdst="/public/software/bamdst/bamdst"
+
 # additional files
 # reference fasta file
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
@@ -48,8 +51,10 @@ k2="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_g
 k3="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.gz"
 # dbSNP database
 dbsnp="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/dbsnp_138.hg19.vcf.gz"
+# vep database
+vep_dir="/public/software/vep_98/"
+cache_version="98"
 # ------------------------------------------------------- #
-
 
 input_folder=$1
 output_folder=$2
@@ -78,17 +83,54 @@ fi
 
 # ------------------------------------------ #
 
+trim_dir=$output_folder/trim/;
+if [[ ! -d $trim_dir ]]; then
+    mkdir $trim_dir
+fi
+
+align_dir=$output_folder/align/;
+if [[ ! -d $align_dir ]]; then
+    mkdir $align_dir
+fi
+
+if [[ ! -d $qc_dir/${sampleID} ]]; then
+    mkdir $qc_dir/${sampleID};
+fi;
+
+snp_di r=$output_folder/snp/;
+if [[ ! -d $snp_dir ]]; then
+    mkdir $snp_dir
+fi
+
+# ------------------------------------------ #
 export SENTIEON_LICENSE=${sentieon_license};
+
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
+echo "========================================================"
+echo "LOGGING: -- settings -- input folder -- ${input_folder}"
+echo "LOGGING: -- settings -- output folder -- ${output_folder}"
+echo "LOGGING: -- settings -- BED file -- ${bed}"
+echo "========================================================"
+
+echo "sampleID,fastq_size,raw_reads,raw_bases,clean_reads,clean_bases,\
+qc30_rate,mapping_rate(%),on-target_percent(%),\
+mean_depth,mean_dedup_depth,dup_rate(%),\
+average_insert_size,std_insert_size,\
+Uniformity_0.1X(%),Uniformity_0.2X(%),\
+Uniformity_0.5X(%),Uniformity_1X(%),\
+50x_depth_percent(%),100x_depth_percent(%),\
+150x_depth_percent(%),200x_depth_percent(%),\
+300x_depth_percent(%),400x_depth_percent(%),\
+500x_depth_percent(%)" > $qc_dir/QC_summary.csv
+
+# ------------------------------------------ #
 
 for ifile in $input_folder/*_R1.fastq.gz;
 do 
     sampleID=`basename ${ifile%%"_R1"*}`
 
     # step1 - trim reads
-    trim_dir=$output_folder/trim/;
-    if [[ ! -d $trim_dir ]]; then
-        mkdir $trim_dir
-    fi
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- trimming";
 
     $fastp --in1 $input_folder/${sampleID}_R1.fastq.gz \
     --in2 $input_folder/${sampleID}_R2.fastq.gz \
@@ -100,10 +142,7 @@ do
     --json $trim_dir/${sampleID}.trim.json;
 
     # step2 - align & sort
-    align_dir=$output_folder/align/;
-    if [[ ! -d $align_dir ]]; then
-        mkdir $align_dir
-    fi
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- alignment & sorting";
 
     ($sentieon bwa mem -M -R "@RG\tID:${sampleID}\tSM:${sampleID}\tPL:illumina" \
     -t ${thread} -K 10000000 ${ref} \
@@ -124,6 +163,8 @@ do
 
     # step4 (optional) - remove duplicates
     if [ $dedup == true ]; then
+        echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- deduplication";
+
         ${sentieon} driver -t ${thread} \
         -i ${align_dir}/${sampleID}.sorted.bam \
         --algo LocusCollector \
@@ -136,7 +177,71 @@ do
         ${align_dir}/${sampleID}.sorted.dedup.bam;
     fi
 
-    # step5 - indel re-alignment
+    # step5 - quality control
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- quality control";
+
+    $bamdst -p $bed -o $qc_dir/${sampleID} \
+    ${align_dir}/${sampleID}.sorted.dedup.bam;
+
+    $samtools stats -@ ${thread} ${align_dir}/${sampleID}.sorted.dedup.bam > ${qc_dir}/${sampleID}.stats.txt;
+
+    normal_r1=$(du $input_folder/${sampleID}_R1.fastq.gz -shL |awk '{print $1}');
+    normal_r2=$(du $input_folder/${sampleID}_R2.fastq.gz -shL |awk '{print $1}');
+
+    normal_raw_reads=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['before_filtering']['total_reads'])"`
+
+    normal_clean_reads=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['total_reads'])"`
+
+    normal_raw_bases=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['before_filtering']['total_bases'])"`
+
+    normal_clean_bases=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['total_bases'])"`
+
+    normal_qc_rate=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['q30_rate'])"`
+
+    normal_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
+    
+    normal_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    normal_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    normal_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
+
+    normal_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
+
+    normal_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
+    normal_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
+
+    normal_50x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
+    normal_100x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
+    normal_150x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
+    normal_200x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
+    normal_300x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
+    normal_400x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
+    normal_500x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
+
+    normal_01x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
+    normal_02x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
+    normal_05x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
+    normal_1x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
+
+
+    echo "${sampleID},${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},\
+    ${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},\
+    ${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},\
+    ${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},\
+    ${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+    >> $qc_dir/QC_summary.csv
+
+    # step6 - indel re-alignment
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- indel-realignment";
     if [ $dedup == true ]; then
         ${sentieon} driver -t ${thread} -r ${ref} \
         -i ${align_dir}/${sampleID}.sorted.dedup.bam \
@@ -149,7 +254,8 @@ do
         ${align_dir}/${sampleID}.realigned.bam
     fi
 
-    # step6 - BQSR
+    # step7 - BQSR
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- BQSR";
     ${sentieon} driver -t ${thread} -r ${ref} \
     -i ${align_dir}/${sampleID}.realigned.bam \
     --algo QualCal -k ${k1} -k ${k2} -k ${k3} ${align_dir}/${sampleID}.recal.table;
@@ -159,11 +265,8 @@ do
     ${align_dir}/${sampleID}.recal.post.table \
     --algo ReadWriter ${align_dir}/${sampleID}.recal.bam;
 
-    # step7 - Haplotyper
-    snp_dir=$output_folder/snp/;
-    if [[ ! -d $snp_dir ]]; then
-        mkdir $snp_dir
-    fi
+    # step8 - Haplotyper
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- snp calling";
 
     ${sentieon} driver -r ${ref} -t ${thread} \
     -i ${align_dir}/${sampleID}.recal.bam \
@@ -171,14 +274,37 @@ do
     -d ${dbsnp} \
     ${snp_dir}/${sampleID}.germline.raw.vcf;
 
-    # step8 - normalise variants positions
+    # step9 - normalise variants positions
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- VCF normalisation & filtration";
+
     $bcftools norm -m -both -f ${ref} \
     ${snp_dir}/${sampleID}.germline.raw.vcf \
-    -o ${snp_dir}/${sampleID}.germline.norm.vcf
+    -o ${snp_dir}/${sampleID}.germline.step1_norm.vcf
 
-    # step9 - filter variants without enough coverage
+    # step10 - filter variants without enough coverage
     $bcftools filter -i "FORMAT/DP>20" \
-    ${snp_dir}/${sampleID}.germline.norm.vcf > \
-    ${snp_dir}/${sampleID}.germline.filtered.vcf
+    ${snp_dir}/${sampleID}.germline.step1_norm.vcf > \
+    ${snp_dir}/${sampleID}.germline.step2_filter.vcf;
+
+    $bgzip ${snv_dir}/${sampleID}.step2_filter.vcf;
+
+    $tabix -p vcf ${snv_dir}/${sampleID}.step2_filter.vcf.gz;
+
+    $bcftools view -R $bed \
+    ${snv_dir}/${sampleID}.step2_filter.vcf.gz \
+    > ${snv_dir}/${sampleID}.step3_on_target.vcf;
+
+    # step11 - annotation
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- variants annotation";
+
+    $vep --dir ${vep_dir} --cache --offline --cache_version ${cache_version} \
+    --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
+    --gene_phenotype --use_given_ref --refseq --check_existing \
+    --hgvs --hgvsg --transcript_version --max_af \
+    --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
+    -o ${snv_dir}/${sampleID}.step8_anno.vcf;
+
+
 done
 
+echo "LOGGING: `date --rfc-3339=seconds` -- Analysis completed"
