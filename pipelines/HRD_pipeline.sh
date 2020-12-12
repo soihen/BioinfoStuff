@@ -27,7 +27,8 @@
 # ------------------------------------------------------------------------------------- #
 
 
-# -------------------- set parameters ------------------- #
+# --------------------------- set parameters --------------------------- #
+# ---------------------------------------------------------------------- #
 sentieon_license="192.168.1.186:8990"
 thread=16
 
@@ -59,7 +60,27 @@ cache_version="98"
 clinic_transcripts="/public/home/kai/database/LRG/parsed_LRG.tsv"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
-# ------------------------------------------------------- #
+
+# ------------------------------ argparser ----------------------------- #
+# ---------------------------------------------------------------------- #
+input_folder=$1
+output_folder=$2
+bed1=$3
+bed2=$4
+bed3=$5
+
+if [[ ! -d $input_folder  ]];
+then
+    echo "Error: input_folder does not Found!"
+    exit 1
+fi
+
+
+if [[ ! -f $bed1 || ! -f $bed2 || ! -f $bed3  ]];
+then
+    echo "Error: BED file does not Found!"
+    exit 1
+fi
 
 if [[  $1 == '-h'  ]]; then
     echo "Usage: ./HRD_pipeline.sh [input_folder] [output_folder] [BED1] [BED2] [BED3]"
@@ -74,15 +95,8 @@ if [[  $1 == '-h'  ]]; then
 fi
 
 
-# -------------------------------
-# create output directory
-input_folder=$1
-output_folder=$2
-bed1=$3
-bed2=$4
-bed3=$5
-
-
+# ----------------------  orgnise output dir  -------------------------- #
+# ---------------------------------------------------------------------- #
 if [[ ! -d $output_folder ]]; 
 then
     mkdir $output_folder
@@ -120,7 +134,9 @@ then
     mkdir $snv_dir
 fi
 
-# -------------------------------
+
+# ---------------------------  LOGGING  -------------------------------- #
+# ---------------------------------------------------------------------- #
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
@@ -145,6 +161,10 @@ Uniformity_0.5X(HR genes)(%),Uniformity_1X(HR genes)(%),\
 > $qc_dir/QC_summary.csv
 
 
+
+# ---------------------------------------------------------------------- #
+# ---------------------------  Pipeline  ------------------------------- #
+# ---------------------------------------------------------------------- #
 export SENTIEON_LICENSE=${sentieon_license};
 
 for ifile in $input_folder/*_tumor_R1.fastq.gz;

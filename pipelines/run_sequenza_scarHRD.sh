@@ -24,7 +24,8 @@
 # ------------------------------------------------------------------------------------- #
 
 
-# -------------------- set parameters ------------------- #
+# --------------------------- set parameters --------------------------- #
+# ---------------------------------------------------------------------- #
 sentieon_license="192.168.1.186:8990"
 thread=8
 
@@ -41,17 +42,38 @@ bamdst="/public/software/bamdst/bamdst"
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
-# ------------------------------------------------------- #
 
 
-
-# -------------------------------
-# create output directory
+# ------------------------------ argparser ----------------------------- #
+# ---------------------------------------------------------------------- #
 input_folder=$1
 output_folder=$2
 bed=$3
 
 
+if [[ ! -d $input_folder  ]];
+then
+    echo "Error: input_folder does not Found!"
+    exit 1
+fi
+
+if [[ ! -f $bed  ]];
+then
+    echo "Error: BED file does not Found!"
+    exit 1
+fi
+
+if [[  $1 == '-h'  ]]; then
+    echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED]"
+    echo "-------------------------------------------------------------------------"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "\${sampleID}_[tumor|normal]_R[1|2].fastq.gz"
+    exit 0
+fi
+
+
+# ----------------------  orgnise output dir  -------------------------- #
+# ---------------------------------------------------------------------- #
 if [[ ! -d $output_folder ]]; 
 then
     mkdir $output_folder
@@ -83,7 +105,9 @@ if [[ ! -d $qc_dir ]]; then
     mkdir $qc_dir
 fi
 
-# -------------------------------
+
+# ---------------------------  LOGGING  -------------------------------- #
+# ---------------------------------------------------------------------- #
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
@@ -103,6 +127,10 @@ Uniformity_0.5X(%),Uniformity_1X(%),\
 500x_depth_percent(%)" > $qc_dir/QC_summary.csv
 
 
+
+# ---------------------------------------------------------------------- #
+# ---------------------------  Pipeline  ------------------------------- #
+# ---------------------------------------------------------------------- #
 export SENTIEON_LICENSE=${sentieon_license};
 
 for ifile in $input_folder/*_tumor_R1.fastq.gz;
@@ -292,12 +320,17 @@ do
     tumor_05x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
     tumor_1x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
-    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
+    echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},\
+    ${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},\
+    ${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},\
+    ${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
     >> ${qc_dir}/QC_summary.csv
 
-    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+    echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},\
+    ${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},\
+    ${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},\
+    ${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
     >> ${qc_dir}/QC_summary.csv
-
 
     # step5 - generate seqz file
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- generating seqz file";
