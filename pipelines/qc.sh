@@ -7,7 +7,7 @@
 #    3) Clean Reads/Bases                                                               #
 #    4) Q30 rate                                                                        #
 #    5) Mapping rate                                                                    #
-#    6) on-target rate (calculated by base)                                             #
+#    6) on-target rate (by reads)                                                       #
 #    7) Mean depth & Mean deduplicated depth                                            #
 #    8) Duplicate rate                                                                  #
 #    9) Insert size / standard deviation                                                #
@@ -15,39 +15,20 @@
 # ------------------------------------------------------------------------------------- #
 
 
-if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./qc.sh [input_folder] [results_folder] [qc_folder] [BED file]"
-    echo "-------------------------------------------------------------------------"
-    echo "suitable for other pipelines as well"
-    echo "[input_folder] should contain fastq files with following naming system:"
-    echo "  single -- \${sampleID}_R[1|2].fastq.gz"
-    echo "  matched -- \${sampleID}_[tumor|normal]_R[1|2].fastq.gz"
-    exit 0
-fi
-
-
-# -------------------- set parameters ------------------- #
-mode="single" # matched || single
+# --------------------------- set parameters --------------------------- #
+# ---------------------------------------------------------------------- #
 thread=8
 
+# software
 samtools="/public/software/samtools-1.9/samtools"
 bamdst="/public/software/bamdst/bamdst"
 
-# -------------------------------
-# create output directory
+# ------------------------------ argparser ----------------------------- #
+# ---------------------------------------------------------------------- #
 input_folder=$1
 output_folder=$2
 qc_dir=$3
 bed=$4
-
-
-trim_dir=$output_folder/trim/;
-align_dir=$output_folder/align/;
-
-if [[ ! -d $qc_dir ]]; then
-    mkdir $qc_dir;
-fi
-
 
 if [[ ! -d $input_folder  ]];
 then
@@ -57,7 +38,7 @@ fi
 
 if [[ ! -d $output_folder  ]];
 then
-    echo "Error: output_folder does not Found!"
+    echo "Error: results_folder does not Found!"
     exit 1
 fi
 
@@ -68,7 +49,28 @@ then
 fi
 
 
-# -------------------------------
+if [[  $1 == '-h'  ]]; 
+then
+    echo "Usage: ./qc.sh [input_folder] [results_folder] [qc_folder] [BED file]"
+    echo "-------------------------------------------------------------------------"
+    echo "suitable for other pipelines as well"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "\${sampleID}_R[1|2].fastq.gz"
+    exit 0
+fi
+
+# ----------------------  orgnise output dir  -------------------------- #
+# ---------------------------------------------------------------------- #
+
+trim_dir=$output_folder/trim/;
+align_dir=$output_folder/align/;
+
+if [[ ! -d $qc_dir ]]; then
+    mkdir $qc_dir;
+fi
+
+# ---------------------------  LOGGING  -------------------------------- #
+# ---------------------------------------------------------------------- #
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
@@ -91,191 +93,72 @@ Uniformity_0.5X(%),Uniformity_1X(%),\
 > $qc_dir/QC_summary.csv;
 
 
-if [[ $mode == 'matched'  ]];
-then
-    for ifile in $input_folder/*_tumor_R1.fastq.gz;
-    do
-        sampleID=`basename ${ifile%%"_tumor"*}`;
-        
-        if [[ ! -d $qc_dir/${sampleID}.normal ]]; then
-            mkdir $qc_dir/${sampleID}.normal
-        fi
+# ---------------------------------------------------------------------- #
+# ---------------------------  Pipeline  ------------------------------- #
+# ---------------------------------------------------------------------- #
+for ifile in $input_folder/*_R1.fastq.gz;
+do 
+    sampleID=`basename ${ifile%%"_R1"*}`;
 
-        if [[ ! -d $qc_dir/${sampleID}.tumor ]]; then
-            mkdir $qc_dir/${sampleID}.tumor
-        fi
+    if [[ ! -d $qc_dir/${sampleID} ]]; then
+        mkdir $qc_dir/${sampleID};
+    fi;
+    
+    $bamdst -p $bed -o $qc_dir/${sampleID} \
+    ${align_dir}/${sampleID}.sorted.dedup.bam;
 
-        $samtools stats -@ ${thread} ${align_dir}/${sampleID}.normal.sorted.dedup.bam > ${qc_dir}/${sampleID}.normal.stats.txt;
-        $samtools stats -@ ${thread} ${align_dir}/${sampleID}.tumor.sorted.dedup.bam > ${qc_dir}/${sampleID}.tumor.stats.txt;
+    $samtools stats -@ ${thread} ${align_dir}/${sampleID}.sorted.dedup.bam > ${qc_dir}/${sampleID}.stats.txt;
 
-        $bamdst -p $bed -o $qc_dir/${sampleID}.normal \
-        ${align_dir}/${sampleID}.normal.sorted.dedup.bam;
+    tumor_r1=$(du $input_folder/${sampleID}_R1.fastq.gz -shL |awk '{print $1}');
+    tumor_r2=$(du $input_folder/${sampleID}_R2.fastq.gz -shL |awk '{print $1}');
 
-        $bamdst -p $bed -o $qc_dir/${sampleID}.tumor \
-        ${align_dir}/${sampleID}.tumor.sorted.dedup.bam;
+    tumor_raw_reads=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['before_filtering']['total_reads'])"`;
 
-        tumor_r1=$(du $input_folder/${sampleID}_tumor_R1.fastq.gz -shL |awk '{print $1}');
-        tumor_r2=$(du $input_folder/${sampleID}_tumor_R2.fastq.gz -shL |awk '{print $1}');
-        normal_r1=$(du $input_folder/${sampleID}_normal_R1.fastq.gz -shL |awk '{print $1}');
-        normal_r2=$(du $input_folder/${sampleID}_normal_R2.fastq.gz -shL |awk '{print $1}');
+    tumor_clean_reads=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['total_reads'])"`;
 
-        normal_raw_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_reads'])"`;
+    tumor_raw_bases=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['before_filtering']['total_bases'])"`;
 
-        normal_clean_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_reads'])"`;
+    tumor_clean_bases=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['total_bases'])"`;
 
-        normal_raw_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_bases'])"`;
+    tumor_qc_rate=`python3 -c "import json; \
+    fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
+    print(fh['summary']['after_filtering']['q30_rate'])"`;
 
-        normal_clean_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_bases'])"`;
+    tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
+    
+    tumor_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    tumor_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
+    tumor_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
 
-        tumor_raw_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_reads'])"`;
+    tumor_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
 
-        tumor_clean_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_reads'])"`;
+    tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
+    tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
 
-        tumor_raw_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_bases'])"`;
+    tumor_50x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
+    tumor_100x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
+    tumor_150x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
+    tumor_200x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
+    tumor_300x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
+    tumor_400x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
+    tumor_500x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
 
-        tumor_clean_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_bases'])"`;
+    tumor_01x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
+    tumor_02x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
+    tumor_05x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
+    tumor_1x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
 
-        normal_qc_rate=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`;
-
-        tumor_qc_rate=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`;
-
-        normal_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.normal/coverage.report | awk -F"\t" '{print $2}');
-        tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.tumor/coverage.report | awk -F"\t" '{print $2}');
-
-        normal_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}.normal/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        normal_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}.normal/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        normal_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}.normal/coverage.report |awk -F"\t" '{print $2}');
-        
-        tumor_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}.tumor/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        tumor_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}.tumor/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        tumor_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}.tumor/coverage.report |awk -F"\t" '{print $2}');
-
-        normal_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}.normal/coverage.report |awk -F"\t" '{print $2}');
-        tumor_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}.tumor/coverage.report |awk -F"\t" '{print $2}');
-
-        normal_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
-        normal_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.normal.stats.txt);
-
-        tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
-        tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.tumor.stats.txt);
-
-        normal_50x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
-        normal_100x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
-        normal_150x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
-        normal_200x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
-        normal_300x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
-        normal_400x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
-        normal_500x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
-
-        tumor_50x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
-        tumor_100x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
-        tumor_150x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
-        tumor_200x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
-        tumor_300x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
-        tumor_400x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
-        tumor_500x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
-
-        normal_01x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
-        normal_02x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
-        normal_05x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
-        normal_1x=$(less -S $qc_dir/${sampleID}.normal/depth.tsv.gz | awk -v depth=${normal_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
-
-        tumor_01x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
-        tumor_02x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
-        tumor_05x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
-        tumor_1x=$(less -S $qc_dir/${sampleID}.tumor/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
-
-        echo "${sampleID}.normal,${normal_r1}/${normal_r2},${normal_raw_reads},${normal_raw_bases},${normal_clean_reads},${normal_clean_bases},${normal_qc_rate},${normal_mapping_rate},${normal_on_target},${normal_mean_depth},${normal_mean_dedup_depth},${normal_dup_rate},${normal_insert_size},${normal_insert_std},${normal_01x},${normal_02x},${normal_05x},${normal_1x},${normal_50x},${normal_100x},${normal_150x},${normal_200x},${normal_300x},${normal_400x},${normal_500x}" \
-        >> ${qc_dir}/QC_summary.csv
-
-        echo "${sampleID}.tumor,${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
-        >> ${qc_dir}/QC_summary.csv
-    done
-
-elif [[  $mode == 'single'  ]];
-then
-    for ifile in $input_folder/*_R1.fastq.gz;
-    do 
-        sampleID=`basename ${ifile%%"_R1"*}`;
-
-        if [[ ! -d $qc_dir/${sampleID} ]]; then
-            mkdir $qc_dir/${sampleID};
-        fi;
-        
-        $bamdst -p $bed -o $qc_dir/${sampleID} \
-        ${align_dir}/${sampleID}.sorted.dedup.bam;
-
-        $samtools stats -@ ${thread} ${align_dir}/${sampleID}.sorted.dedup.bam > ${qc_dir}/${sampleID}.stats.txt;
-
-        tumor_r1=$(du $input_folder/${sampleID}_R1.fastq.gz -sh |awk '{print $1}');
-        tumor_r2=$(du $input_folder/${sampleID}_R2.fastq.gz -sh |awk '{print $1}');
-
-        tumor_raw_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_reads'])"`;
-
-        tumor_clean_reads=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_reads'])"`;
-
-        tumor_raw_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['before_filtering']['total_bases'])"`;
-
-        tumor_clean_bases=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['total_bases'])"`;
-
-        tumor_qc_rate=`python3 -c "import json; \
-        fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`;
-
-        tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
-        
-        tumor_mean_depth=$(grep "Average depth" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        tumor_mean_dedup_depth=$(grep "Average depth(rmdup)" $qc_dir/${sampleID}/coverage.report |head -n 1 |awk -F"\t" '{print $2}');
-        tumor_dup_rate=$(grep "Fraction of PCR duplicate reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
-
-        tumor_on_target=$(grep "Fraction of Target Reads in all reads" $qc_dir/${sampleID}/coverage.report |awk -F"\t" '{print $2}');
-
-        tumor_insert_size=$(awk -F"\t" '$2 == "insert size average:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
-        tumor_insert_std=$(awk -F"\t" '$2 == "insert size standard deviation:" {print $3}' ${qc_dir}/${sampleID}.stats.txt);
-
-        tumor_50x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 50) count+=1} END {print count/NR*100}');
-        tumor_100x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 100) count+=1} END {print count/NR*100}');
-        tumor_150x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 150) count+=1} END {print count/NR*100}');
-        tumor_200x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 200) count+=1} END {print count/NR*100}');
-        tumor_300x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 300) count+=1} END {print count/NR*100}');
-        tumor_400x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 400) count+=1} END {print count/NR*100}');
-        tumor_500x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk 'BEGIN {count=0} {if ($4 > 500) count+=1} END {print count/NR*100}');
-
-        tumor_01x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.1) count+=1} END {print count/NR*100}');
-        tumor_02x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.2) count+=1} END {print count/NR*100}');
-        tumor_05x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth*0.5) count+=1} END {print count/NR*100}');
-        tumor_1x=$(less -S $qc_dir/${sampleID}/depth.tsv.gz | awk -v depth=${tumor_mean_dedup_depth} 'BEGIN {count=0} {if ($4 > depth) count+=1} END {print count/NR*100}');
-
-        echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
-        >> ${qc_dir}/QC_summary.csv
-    done;
-
-fi
+    echo "${sampleID},${tumor_r1}/${tumor_r2},${tumor_raw_reads},${tumor_raw_bases},${tumor_clean_reads},${tumor_clean_bases},\
+    ${tumor_qc_rate},${tumor_mapping_rate},${tumor_on_target},${tumor_mean_depth},${tumor_mean_dedup_depth},${tumor_dup_rate},\
+    ${tumor_insert_size},${tumor_insert_std},${tumor_01x},${tumor_02x},${tumor_05x},${tumor_1x},\
+    ${tumor_50x},${tumor_100x},${tumor_150x},${tumor_200x},${tumor_300x},${tumor_400x},${tumor_500x}" \
+    >> ${qc_dir}/QC_summary.csv;
+done
