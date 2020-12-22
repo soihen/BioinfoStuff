@@ -61,6 +61,15 @@ output_folder=$2
 bed=$3
 
 
+if [[  $1 == '-h'  ]]; then
+    echo "Usage: ./snp_calling.sh [input_folder] [output_folder] [BED]"
+    echo "-------------------------------------------------------------------------"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "  \${sampleID}_R[1|2].fastq.gz"
+    exit 0
+fi
+
+
 if [[ ! -d $input_folder  ]];
 then
     echo "Error: input_folder does not Found!"

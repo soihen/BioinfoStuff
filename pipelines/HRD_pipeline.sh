@@ -69,6 +69,18 @@ bed1=$3
 bed2=$4
 bed3=$5
 
+if [[  $1 == '-h'  ]]; then
+    echo "Usage: ./HRD_pipeline.sh [input_folder] [output_folder] [BED1] [BED2] [BED3]"
+    echo "-------------------------------------------------------------------------"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "               single -- \${sampleID}_R[1|2].fastq.gz"
+    echo "               matched -- \${sampleID}_normal/tumor_R[1|2].fastq.gz"
+    echo "[BED1] -- SNP loci"
+    echo "[BED2] -- Genes"
+    echo "[BED3] -- merged BED file"
+    exit 0
+fi
+
 if [[ ! -d $input_folder  ]];
 then
     echo "Error: input_folder does not Found!"
@@ -80,18 +92,6 @@ if [[ ! -f $bed1 || ! -f $bed2 || ! -f $bed3  ]];
 then
     echo "Error: BED file does not Found!"
     exit 1
-fi
-
-if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./HRD_pipeline.sh [input_folder] [output_folder] [BED1] [BED2] [BED3]"
-    echo "-------------------------------------------------------------------------"
-    echo "[input_folder] should contain fastq files with following naming system:"
-    echo "               single -- \${sampleID}_R[1|2].fastq.gz"
-    echo "               matched -- \${sampleID}_normal/tumor_R[1|2].fastq.gz"
-    echo "[BED1] -- SNP loci"
-    echo "[BED2] -- Genes"
-    echo "[BED3] -- merged BED file"
-    exit 0
 fi
 
 

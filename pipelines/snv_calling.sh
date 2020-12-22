@@ -81,6 +81,16 @@ output_folder=$2
 bed=$3
 cancer_type=$4
 
+if [[  $1 == '-h'  ]]; then
+    echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED] [cancer_type]"
+    echo "-------------------------------------------------------------------------"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "  single -- \${sampleID}_R[1|2].fastq.gz"
+    echo "  matched -- \${sampleID}_normal/tumor_R[1|2].fastq.gz"
+    echo "[cancer_type] should use abbreviation described in software VIC"
+    exit 0
+fi
+
 if [[ ! -d $input_folder  ]];
 then
     echo "Error: input_folder does not Found!"
@@ -92,16 +102,6 @@ then
     echo "Error: BED file does not Found!"
     exit 1
 fi
-
-if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED]"
-    echo "-------------------------------------------------------------------------"
-    echo "[input_folder] should contain fastq files with following naming system:"
-    echo "  single -- \${sampleID}_R[1|2].fastq.gz"
-    echo "  matched -- \${sampleID}_normal/tumor_R[1|2].fastq.gz"
-    exit 0
-fi
-
 
 # ----------------------  orgnise output dir  -------------------------- #
 # ---------------------------------------------------------------------- #
