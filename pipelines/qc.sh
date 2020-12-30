@@ -30,6 +30,17 @@ output_folder=$2
 qc_dir=$3
 bed=$4
 
+if [[  $1 == '-h'  ]]; 
+then
+    echo "Usage: ./qc.sh [input_folder] [results_folder] [qc_folder] [BED file]"
+    echo "-------------------------------------------------------------------------"
+    echo "suitable for other pipelines as well"
+    echo "[input_folder] should contain fastq files with following naming system:"
+    echo "\${sampleID}_R[1|2].fastq.gz"
+    exit 0
+fi
+
+
 if [[ ! -d $input_folder  ]];
 then
     echo "Error: input_folder does not Found!"
@@ -46,17 +57,6 @@ if [[ ! -f $bed  ]];
 then
     echo "Error: BED file does not Found!"
     exit 1
-fi
-
-
-if [[  $1 == '-h'  ]]; 
-then
-    echo "Usage: ./qc.sh [input_folder] [results_folder] [qc_folder] [BED file]"
-    echo "-------------------------------------------------------------------------"
-    echo "suitable for other pipelines as well"
-    echo "[input_folder] should contain fastq files with following naming system:"
-    echo "\${sampleID}_R[1|2].fastq.gz"
-    exit 0
 fi
 
 # ----------------------  orgnise output dir  -------------------------- #
@@ -130,7 +130,7 @@ do
 
     tumor_qc_rate=`python3 -c "import json; \
     fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-    print(fh['summary']['after_filtering']['q30_rate'])"`;
+    print(fh['summary']['before_filtering']['q30_rate'])"`;
 
     tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
     

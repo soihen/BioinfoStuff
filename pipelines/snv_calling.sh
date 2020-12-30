@@ -40,7 +40,7 @@ mode="single"
 calling_method="TNscope"
 
 # whether perform deduplicate step (true || false)
-dedup=false
+dedup=true
 
 # path to software & scripts
 fastp="/data/ngs/softs/fastp/fastp"
@@ -134,6 +134,7 @@ fi
 # ---------------------------  LOGGING  -------------------------------- #
 # ---------------------------------------------------------------------- #
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
+echo "LOGGING: This is the snv_calling.sh pipeline"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
 echo "LOGGING: -- settings -- output folder -- ${output_folder}"
@@ -296,11 +297,11 @@ if [[  $mode == 'matched' ]]; then
 
         normal_qc_rate=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.normal.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`
+        print(fh['summary']['before_filtering']['q30_rate'])"`
 
         tumor_qc_rate=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.tumor.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`
+        print(fh['summary']['before_filtering']['q30_rate'])"`
 
         normal_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.normal/coverage.report | awk -F"\t" '{print $2}');
         tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}.tumor/coverage.report | awk -F"\t" '{print $2}');
@@ -539,7 +540,7 @@ elif [[  $mode == 'single'  ]]; then
 
         tumor_qc_rate=`python3 -c "import json; \
         fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-        print(fh['summary']['after_filtering']['q30_rate'])"`
+        print(fh['summary']['before_filtering']['q30_rate'])"`
 
         tumor_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
         

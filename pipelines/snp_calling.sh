@@ -215,7 +215,7 @@ do
 
     normal_qc_rate=`python3 -c "import json; \
     fh = json.load(open('$trim_dir/${sampleID}.trim.json', 'r')); \
-    print(fh['summary']['after_filtering']['q30_rate'])"`
+    print(fh['summary']['before_filtering']['q30_rate'])"`
 
     normal_mapping_rate=$(grep "Fraction of Mapped Reads" $qc_dir/${sampleID}/coverage.report | awk -F"\t" '{print $2}');
     
