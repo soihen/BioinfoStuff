@@ -76,11 +76,6 @@ clinic_transcripts="/public/home/kai/database/LRG/parsed_LRG.tsv"
 
 # ------------------------------ argparser ----------------------------- #
 # ---------------------------------------------------------------------- #
-input_folder=$1
-output_folder=$2
-bed=$3
-cancer_type=$4
-
 if [[  $1 == '-h'  ]]; then
     echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED] [cancer_type]"
     echo "-------------------------------------------------------------------------"
@@ -90,6 +85,11 @@ if [[  $1 == '-h'  ]]; then
     echo "[cancer_type] should use abbreviation described in software VIC"
     exit 0
 fi
+
+input_folder=`realpath $1`
+output_folder=`realpath $2`
+bed=`realpath $3`
+cancer_type=$4
 
 if [[ ! -d $input_folder  ]];
 then

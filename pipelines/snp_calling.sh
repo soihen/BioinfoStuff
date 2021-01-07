@@ -27,7 +27,9 @@
 # ------------------------------------------------------------------------------------- #
 
 
-# -------------------- set parameters ------------------- #
+# --------------------------- set parameters --------------------------- #
+# ---------------------------------------------------------------------- #
+
 sentieon_license="192.168.1.186:8990"
 thread=16
 # whether perform deduplicate step (true || false)
@@ -54,12 +56,10 @@ dbsnp="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/dbsnp_138.hg19
 # vep database
 vep_dir="/public/software/vep_98/"
 cache_version="98"
-# ------------------------------------------------------- #
 
-input_folder=$1
-output_folder=$2
-bed=$3
 
+# ------------------------------ argparser ----------------------------- #
+# ---------------------------------------------------------------------- #
 
 if [[  $1 == '-h'  ]]; then
     echo "Usage: ./snp_calling.sh [input_folder] [output_folder] [BED]"
@@ -69,6 +69,9 @@ if [[  $1 == '-h'  ]]; then
     exit 0
 fi
 
+input_folder=`realpath $1`
+output_folder=`realpath $2`
+bed=`realpath $3`
 
 if [[ ! -d $input_folder  ]];
 then
@@ -90,7 +93,8 @@ then
 fi
 
 
-# ------------------------------------------ #
+# ----------------------  orgnise output dir  -------------------------- #
+# ---------------------------------------------------------------------- #
 
 trim_dir=$output_folder/trim/;
 if [[ ! -d $trim_dir ]]; then
@@ -102,17 +106,18 @@ if [[ ! -d $align_dir ]]; then
     mkdir $align_dir
 fi
 
-if [[ ! -d $qc_dir/${sampleID} ]]; then
-    mkdir $qc_dir/${sampleID};
-fi;
+qc_dir=$output_folder/qc/;
+if [[ ! -d $qc_dir ]]; then
+    mkdir $qc_dir
+fi
 
-snp_di r=$output_folder/snp/;
+snp_dir=$output_folder/snp/;
 if [[ ! -d $snp_dir ]]; then
     mkdir $snp_dir
 fi
 
-# ------------------------------------------ #
-export SENTIEON_LICENSE=${sentieon_license};
+# ---------------------------  LOGGING  -------------------------------- #
+# ---------------------------------------------------------------------- #
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
 echo "========================================================"
@@ -132,7 +137,12 @@ Uniformity_0.5X(%),Uniformity_1X(%),\
 300x_depth_percent(%),400x_depth_percent(%),\
 500x_depth_percent(%)" > $qc_dir/QC_summary.csv
 
-# ------------------------------------------ #
+
+# ---------------------------------------------------------------------- #
+# ---------------------------  Pipeline  ------------------------------- #
+# ---------------------------------------------------------------------- #
+
+export SENTIEON_LICENSE=${sentieon_license};
 
 for ifile in $input_folder/*_R1.fastq.gz;
 do 
@@ -188,6 +198,10 @@ do
 
     # step5 - quality control
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- quality control";
+
+    if [[ ! -d $qc_dir/${sampleID} ]]; then
+        mkdir $qc_dir/${sampleID}
+    fi
 
     $bamdst -p $bed -o $qc_dir/${sampleID} \
     ${align_dir}/${sampleID}.sorted.dedup.bam;

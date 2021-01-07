@@ -46,10 +46,6 @@ gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 
 # ------------------------------ argparser ----------------------------- #
 # ---------------------------------------------------------------------- #
-input_folder=$1
-output_folder=$2
-bed=$3
-
 if [[  $1 == '-h'  ]]; then
     echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED]"
     echo "-------------------------------------------------------------------------"
@@ -57,6 +53,10 @@ if [[  $1 == '-h'  ]]; then
     echo "\${sampleID}_[tumor|normal]_R[1|2].fastq.gz"
     exit 0
 fi
+
+input_folder=`realpath $1`
+output_folder=`realpath $2`
+bed=`realpath $3`
 
 if [[ ! -d $input_folder  ]];
 then
