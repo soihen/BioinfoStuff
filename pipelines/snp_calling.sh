@@ -13,7 +13,8 @@
 #   BQSR +                                                                              #
 #   SNP/INDEL calling (Haplotyper)  +                                                   #
 #   Variant Position Normalisation (bcftools) +                                         #
-#   Filter based on depth coverage (bcftools)                                           #
+#   Filter based on depth coverage (bcftools) +                                         #
+#   Variant Annotation (Ensembl-VEP)                                                    #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
 #   [admin@kai]$bash snp_sentieon.sh [input_folder] [output_folder] [BED_file]          #
@@ -120,6 +121,7 @@ fi
 # ---------------------------------------------------------------------- #
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis started"
+echo "LOGGING: This is the snp_calling.sh pipeline"
 echo "========================================================"
 echo "LOGGING: -- settings -- input folder -- ${input_folder}"
 echo "LOGGING: -- settings -- output folder -- ${output_folder}"
@@ -309,13 +311,13 @@ do
     ${snp_dir}/${sampleID}.germline.step1_norm.vcf > \
     ${snp_dir}/${sampleID}.germline.step2_filter.vcf;
 
-    $bgzip ${snv_dir}/${sampleID}.step2_filter.vcf;
+    $bgzip ${snp_dir}/${sampleID}.germline.step2_filter.vcf;
 
-    $tabix -p vcf ${snv_dir}/${sampleID}.step2_filter.vcf.gz;
+    $tabix -p vcf ${snp_dir}/${sampleID}.germline.step2_filter.vcf.gz;
 
     $bcftools view -R $bed \
-    ${snv_dir}/${sampleID}.step2_filter.vcf.gz \
-    > ${snv_dir}/${sampleID}.step3_on_target.vcf;
+    ${snp_dir}/${sampleID}.germline.step2_filter.vcf.gz \
+    > ${snp_dir}/${sampleID}.germline.step3_on_target.vcf;
 
     # step11 - annotation
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- variants annotation";
@@ -324,9 +326,8 @@ do
     --assembly GRCh37 --format vcf --fa ${ref} --force_overwrite --vcf \
     --gene_phenotype --use_given_ref --refseq --check_existing \
     --hgvs --hgvsg --transcript_version --max_af \
-    --vcf_info_field ANN -i ${snv_dir}/${sampleID}.step7_MNV_merged.vcf \
-    -o ${snv_dir}/${sampleID}.step8_anno.vcf;
-
+    --vcf_info_field ANN -i ${snp_dir}/${sampleID}.germline.step3_on_target.vcf \
+    -o ${snp_dir}/${sampleID}.germline.step4_anno.vcf;
 
 done
 
