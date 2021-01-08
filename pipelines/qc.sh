@@ -25,10 +25,6 @@ bamdst="/public/software/bamdst/bamdst"
 
 # ------------------------------ argparser ----------------------------- #
 # ---------------------------------------------------------------------- #
-input_folder=$1
-output_folder=$2
-qc_dir=$3
-bed=$4
 
 if [[  $1 == '-h'  ]]; 
 then
@@ -40,6 +36,10 @@ then
     exit 0
 fi
 
+input_folder=`realpath $1`
+output_folder=`realpath $2`
+qc_dir=`realpath $3`
+bed=`realpath $4`
 
 if [[ ! -d $input_folder  ]];
 then
