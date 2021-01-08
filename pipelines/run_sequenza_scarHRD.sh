@@ -9,7 +9,7 @@
 #   Allelic specific CNV calling (Sequencza)                                            #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash run_sequenza.sh [input_folder] [output_folder] [BED]               #
+#   [admin@kai]$bash run_sequenza_scarHRD.sh [input_folder] [output_folder] [BED]       #
 #                                                                                       #
 # input_folder should contain pairs of matched tumor/normal pair-end sequenced Fastqs   #
 #                                                                                       #
@@ -47,7 +47,7 @@ gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 # ------------------------------ argparser ----------------------------- #
 # ---------------------------------------------------------------------- #
 if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./snv_calling.sh [input_folder] [output_folder] [BED]"
+    echo "Usage: ./run_sequenza_scarHRD.sh [input_folder] [output_folder] [BED]"
     echo "-------------------------------------------------------------------------"
     echo "[input_folder] should contain fastq files with following naming system:"
     echo "\${sampleID}_[tumor|normal]_R[1|2].fastq.gz"
@@ -361,10 +361,13 @@ do
     $cnv_dir/${sampleID}_chrY.seqz.gz.bin.gz \
     > $cnv_dir/${sampleID}.bin.seqz;
 
-    sed -i -e 1b -e '/^chromosome/d' $cnv_dir/${sampleID}.bin.seqz;
+    grep -v "chromosome" $cnv_dir/${sampleID}.bin.seqz > $cnv_dir/tmp.contents;
+    head -n 1 $cnv_dir/${sampleID}.bin.seqz > $cnv_dir/tmp.header;
+    cat $cnv_dir/tmp.header $cnv_dir/tmp.contents > $cnv_dir/${sampleID}.bin.seqz;
+    rm $cnv_dir/tmp.header $cnv_dir/tmp.contents;
+
     bgzip $cnv_dir/${sampleID}.bin.seqz;
     tabix -f -s 1 -b 2 -e 2 -S 1 $cnv_dir/${sampleID}.bin.seqz.gz;
-
 
     # step6 - process seqz data, normalization, segmentation and estimate cellularity and ploidy
     echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- CNV calling ";
