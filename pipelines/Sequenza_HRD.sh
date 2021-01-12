@@ -6,10 +6,11 @@
 #   Alignment (Sentieon-bwa) +                                                          #
 #   statistic analysis +                                                                #
 #   Deduplication (optional) +                                                          #
-#   Allelic specific CNV calling (Sequencza)                                            #
+#   Allelic specific CNV calling (Sequencza) +                                          #
+#   Calculate and plot HRD genomic scars (HRDecipher)                                   #
 # ------------------------------------------------------------------------------------- #
 # Usage:                                                                                #
-#   [admin@kai]$bash run_sequenza_scarHRD.sh [input_folder] [output_folder] [BED]       #
+#   [admin@kai]$bash Sequenza_HRD.sh [input_folder] [output_folder] [BED]               #
 #                                                                                       #
 # input_folder should contain pairs of matched tumor/normal pair-end sequenced Fastqs   #
 #                                                                                       #
@@ -38,6 +39,7 @@ sentieon="/data/ngs/softs/sentieon/sentieon-genomics-201808.08/bin/sentieon"
 bcftools="/public/software/bcftools-1.9/bcftools"
 samtools="/public/software/samtools-1.9/samtools"
 bamdst="/public/software/bamdst/bamdst"
+HRDecipher="/public/home/kai/softwares/HRDecipher/HRDecipher.py"
 
 ref="/data/ngs/database/soft_database/GATK_Resource_Bundle/hg19/ucsc.hg19.fasta"
 gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
@@ -47,7 +49,7 @@ gcwig="/public/database/GATK_Resource_Bundle/hg19/hg19.gc50.wig.gz"
 # ------------------------------ argparser ----------------------------- #
 # ---------------------------------------------------------------------- #
 if [[  $1 == '-h'  ]]; then
-    echo "Usage: ./run_sequenza_scarHRD.sh [input_folder] [output_folder] [BED]"
+    echo "Usage: ./Sequenza_HRD.sh [input_folder] [output_folder] [BED]"
     echo "-------------------------------------------------------------------------"
     echo "[input_folder] should contain fastq files with following naming system:"
     echo "\${sampleID}_[tumor|normal]_R[1|2].fastq.gz"
@@ -380,8 +382,8 @@ do
                      sample.id = '${sampleID}', \
                      out.dir = '$cnv_dir/${sampleID}')"
 
-    # step7 - scarHRD
-    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- scarHRD ";
+    # step7 - HRDecipher
+    echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- run HRDecipher ";
 
     ploidy=$(awk 'NR ==2 {print $2}' $cnv_dir/${sampleID}/${sampleID}_alternative_solutions.txt);
 
@@ -390,13 +392,9 @@ do
      NR!=1 {OFS="\t"; print sample,$1,$2,$3,$10,$11,$12,ploidy}' \
     $cnv_dir/${sampleID}/${sampleID}_segments.txt > $hrd_dir/${sampleID}.pre_hrd.tsv;
 
-    Rscript -e "library(scarHRD); \
-    hrd <- scar_score('$hrd_dir/${sampleID}.pre_hrd.tsv', \
-                reference = 'grch37', \
-                seqz = 'FALSE'); \
-    write.csv(hrd, row.names = '${sampleID}', file = '$hrd_dir/${sampleID}.hrd.csv')"
+    python3 $HRDecipher $hrd_dir/${sampleID}.pre_hrd.tsv;
 done
 
-cat $hrd_dir/*csv | awk 'NR==1 || !/(HRD-sum)/' > $hrd_dir/HRD_results.csv
+cat $hrd_dir/.hrd.tsv | awk 'NR==1 || !/(HRD-sum)/' > $hrd_dir/HRD_results.tsv
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";
