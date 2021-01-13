@@ -382,15 +382,34 @@ if [[  $mode == 'matched' ]]; then
         ${align_dir}/${sampleID}.normal.recal.table;
 
 
-        # step6 - variant calling TNscope
+        # step6 - variant calling
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- variant calling";
 
-        $sentieon driver -t ${thread} -r ${ref} \
-        -i $tumor_bam -q ${align_dir}/${sampleID}.tumor.recal.table \
-        -i $normal_bam -q ${align_dir}/${sampleID}.normal.recal.table \
-        --algo TNscope \
-        --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
-        --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.raw.vcf
+        if [[  $calling_method == 'TNscope' ]];
+        then
+            $sentieon driver -t ${thread} -r ${ref} \
+            -i $tumor_bam -q ${align_dir}/${sampleID}.tumor.recal.table \
+            -i $normal_bam -q ${align_dir}/${sampleID}.normal.recal.table \
+            --algo TNscope \
+            --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
+            --dbsnp ${dbsnp} ${snv_dir}/${sampleID}.raw.vcf
+
+        elif [[  $calling_method == 'TNseq' ]];
+        then
+            ${sentieon} driver -t ${thread} -r ${ref} \
+            -i $tumor_bam -q ${align_dir}/${sampleID}.tumor.recal.table \
+            -i $normal_bam -q ${align_dir}/${sampleID}.normal.recal.table \
+            --algo TNhaplotyper2 \
+            --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
+            --default_af 0.00000001 \
+            ${snv_dir}/${sampleID}.raw.tmp.vcf;
+
+            ${sentieon} tnhapfilter --tumor_sample ${sampleID}.tumor --normal_sample ${sampleID}.normal \
+            -v ${snv_dir}/${sampleID}.raw.tmp.vcf \
+            ${snv_dir}/${sampleID}.raw.vcf;
+
+            rm ${snv_dir}/${sampleID}.raw.tmp.vcf;
+        fi
         
         # step7 - normalisation + remove low quality variants
         echo "LOGGING: ${sampleID} -- `date --rfc-3339=seconds` -- normalise VCF + filter low-support";
@@ -417,11 +436,11 @@ if [[  $mode == 'matched' ]]; then
         grep "#\|PASS" ${snv_dir}/${sampleID}.step3_on_target.vcf > \
         ${snv_dir}/${sampleID}.step4_filter.vcf
 
-        $bcftools filter -i "(FORMAT/AF[0]) >= 0.05" \
+        $bcftools filter -i "(FORMAT/AF[:0]) >= 0.05" \
         ${snv_dir}/${sampleID}.step4_filter.vcf > \
         ${snv_dir}/${sampleID}.step5_filter.vcf;
 
-        $bcftools filter -i "(FORMAT/AD[0:0]+AD[0:1]) >= 250" \
+        $bcftools filter -i "(FORMAT/AD[:0]+AD[:1]) >= 250" \
         ${snv_dir}/${sampleID}.step5_filter.vcf > \
         ${snv_dir}/${sampleID}.step6_filter.vcf; 
 
@@ -642,11 +661,11 @@ elif [[  $mode == 'single'  ]]; then
         grep "#\|PASS" ${snv_dir}/${sampleID}.step4_on_target.vcf > \
         ${snv_dir}/${sampleID}.step5_filter.vcf
 
-        $bcftools filter -i "(FORMAT/AF[0]) >= 0.05" \
+        $bcftools filter -i "(FORMAT/AF[:0]) >= 0.05" \
         ${snv_dir}/${sampleID}.step5_filter.vcf > \
         ${snv_dir}/${sampleID}.step6_filter.vcf;
 
-        $bcftools filter -i "(FORMAT/AD[0:0]+AD[0:1]) >= 250" \
+        $bcftools filter -i "(FORMAT/AD[:0]+AD[:1]) >= 250" \
         ${snv_dir}/${sampleID}.step6_filter.vcf > \
         ${snv_dir}/${sampleID}.step7_filter.vcf; 
 
