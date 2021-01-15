@@ -395,6 +395,6 @@ do
     python3 $HRDecipher $hrd_dir/${sampleID}.pre_hrd.tsv;
 done
 
-cat $hrd_dir/.hrd.tsv | awk 'NR==1 || !/(HRD-sum)/' > $hrd_dir/HRD_results.tsv
+cat $hrd_dir/*.hrd.tsv | awk 'NR==1 || !/(HRD-sum)/' > $hrd_dir/HRD_results.tsv
 
 echo "LOGGING: `date --rfc-3339=seconds` -- Analysis finished";
